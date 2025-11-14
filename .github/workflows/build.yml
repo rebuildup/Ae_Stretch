@@ -632,21 +632,42 @@ jobs:
           $sdkRootForBuild = if ($env:SDK_ROOT) { $env:SDK_ROOT } else { $calculatedSdkRoot }
           Write-Host "Using SDK Root for build: $sdkRootForBuild"
           
-          # Capture both stdout and stderr to file and variable
+          # Run MSBuild with output captured to both console and file
+          Write-Host "Running MSBuild..."
           $buildOutput = & msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
             /p:SDK_ROOT="$sdkRootForBuild" `
             /t:Build `
-            /v:detailed `
+            /v:normal `
             /m `
             /nologo `
-            /fileLogger `
-            "/fileLoggerParameters:LogFile=$buildLogFile;Verbosity=detailed" `
+            /clp:ShowTimestamp;Verbosity=normal;ErrorsOnly;WarningsOnly `
             2>&1 | Tee-Object -FilePath $buildOutputFile
           
-          # Display build output
+          # Display all output
           $buildOutput | ForEach-Object { Write-Host $_ }
+          
+          # Check exit code
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host ""
+            Write-Host "=== MSBuild failed, showing full detailed output ==="
+            Write-Host ""
+            
+            # Re-run with detailed output to see all errors
+            $detailedOutput = & msbuild Stretch.sln `
+              /p:Configuration=Release `
+              /p:Platform=x64 `
+              /p:SDK_ROOT="$sdkRootForBuild" `
+              /t:Build `
+              /v:detailed `
+              /m `
+              /nologo `
+              2>&1
+            
+            $detailedOutput | ForEach-Object { Write-Host $_ }
+            $detailedOutput | Out-File -FilePath $buildOutputFile -Append -Encoding UTF8
+          }
           
           if ($LASTEXITCODE -ne 0) {
             Write-Host ""

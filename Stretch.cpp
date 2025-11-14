@@ -129,7 +129,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     if (shift_amount == 0 || shift_pixels <= 0)
     {
         // No-op stretch: just copy input to output.
-        PF_COPY(input, output, nullptr, nullptr);
+        PF_COPY(input, output, NULL, NULL);
         return err;
     }
 
@@ -148,7 +148,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     if (actual_shift <= 0)
     {
         // Effective shift vanished after direction adjustment.
-        PF_COPY(input, output, nullptr, nullptr);
+        PF_COPY(input, output, NULL, NULL);
         return err;
     }
 
@@ -316,7 +316,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     // pre-fill output with input so early-outs are correct.
     if (direction == 2 || direction == 3)
     {
-        PF_COPY(input, output, nullptr, nullptr);
+        PF_COPY(input, output, NULL, NULL);
     }
 
     if (thread_count == 1)
@@ -360,34 +360,31 @@ static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *para
 {
     PF_Err err = PF_Err_NONE;
 
-    PF_PixelFormat format = PF_PixelFormat_ARGB32;
-
-    if (in_data && in_data->pica_basicP)
+    // Prefer explicit deep-color handling but keep logic simple and robust.
+    if (output->world_flags & PF_WorldFlag_DEEP)
     {
-        AEGP_SuiteHandler suites(in_data->pica_basicP);
-        PF_WorldSuite2 *wsP = suites.WorldSuite2();
-        if (wsP)
+        const A_long bytes_per_pixel = output->rowbytes / output->width;
+
+        if (bytes_per_pixel == static_cast<A_long>(sizeof(PF_Pixel16)))
         {
-            PF_Err pf_err = wsP->PF_GetPixelFormat(output, &format);
-            if (pf_err)
-            {
-                format = PF_PixelFormat_ARGB32;
-            }
+            // 16-bit per channel
+            err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
+        }
+        else if (bytes_per_pixel == static_cast<A_long>(sizeof(PF_PixelFloat)))
+        {
+            // 32-bit float per channel
+            err = RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
+        }
+        else
+        {
+            // Fallback for unexpected formats: treat as 16-bit.
+            err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
         }
     }
-
-    switch (format)
+    else
     {
-    case PF_PixelFormat_ARGB64:
-        err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
-        break;
-    case PF_PixelFormat_ARGB128:
-        err = RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
-        break;
-    case PF_PixelFormat_ARGB32:
-    default:
+        // Standard 8-bit
         err = RenderGeneric<PF_Pixel>(in_data, out_data, params, output);
-        break;
     }
 
     return err;
