@@ -629,7 +629,7 @@ jobs:
             /m `
             /nologo `
             /fileLogger `
-            /fileLoggerParameters:LogFile="$buildLogFile";Verbosity=detailed 2>&1
+            "/fileLoggerParameters:LogFile=$buildLogFile;Verbosity=detailed" 2>&1
           
           # Display build output
           $buildOutput | ForEach-Object { Write-Host $_ }
