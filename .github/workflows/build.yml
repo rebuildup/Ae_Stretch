@@ -605,23 +605,23 @@ jobs:
           
           # Run MSBuild with detailed output
           Write-Host "Starting MSBuild..."
-          msbuild Stretch.sln `
+          $buildOutput = & msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
             /t:Build `
-            /v:detailed `
+            /v:normal `
             /m `
-            /nologo `
-            /flp:logfile="${{ github.workspace }}\build.log";verbosity=detailed
+            /nologo 2>&1
+          
+          # Display build output
+          $buildOutput | ForEach-Object { Write-Host $_ }
           
           if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "Error: Build failed (exit code: $LASTEXITCODE)"
             Write-Host ""
-            if (Test-Path "${{ github.workspace }}\build.log") {
-              Write-Host "=== Last 100 lines of build log ==="
-              Get-Content "${{ github.workspace }}\build.log" -Tail 100
-            }
+            Write-Host "=== Last 100 lines of build output ==="
+            $buildOutput | Select-Object -Last 100 | ForEach-Object { Write-Host $_ }
             Write-Host ""
             Write-Host "Checking SDK structure:"
             Write-Host "  SDK Root: $env:SDK_ROOT"
