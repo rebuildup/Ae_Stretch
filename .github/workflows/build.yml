@@ -450,7 +450,7 @@ jobs:
         run: |
           echo "Copying plugin to SDK Template directory..."
           
-          PLUGIN_DIR="$SDK_ROOT/Template/sep_color"
+          PLUGIN_DIR="$SDK_ROOT/Template/Ae_Stretch"
           mkdir -p "$PLUGIN_DIR"
           
           rsync -av \
@@ -472,7 +472,7 @@ jobs:
         run: |
           Write-Host "Copying plugin to SDK Template directory..."
           
-          $pluginDir = "$env:SDK_ROOT\Template\sep_color"
+          $pluginDir = "$env:SDK_ROOT\Template\Ae_Stretch"
           New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
           
           $excludeDirs = @('.git', 'tmp', 'ae_sdk_work', '.github', 'output')
@@ -499,7 +499,7 @@ jobs:
           
           cd "$PLUGIN_DIR/Mac"
           
-          if [ ! -f "sep_color.xcodeproj/project.pbxproj" ]; then
+          if [ ! -f "Stretch.xcodeproj/project.pbxproj" ]; then
             echo "Error: Xcode project not found"
             ls -la
             exit 1
@@ -518,8 +518,8 @@ jobs:
           
           set +e
           xcodebuild build \
-            -project sep_color.xcodeproj \
-            -target sep_color \
+            -project Stretch.xcodeproj \
+            -target Stretch \
             -configuration Debug \
             -sdk macosx \
             -arch x86_64 \
@@ -547,7 +547,7 @@ jobs:
           echo "Searching for build artifact..."
           PLUGIN_PATH=""
           
-          for search_path in "build/sep_color.plugin" "build/Debug/sep_color.plugin" "build/Release/sep_color.plugin"; do
+          for search_path in "build/Stretch.plugin" "build/Debug/Stretch.plugin" "build/Release/Stretch.plugin"; do
             if [ -d "$search_path" ]; then
               PLUGIN_PATH="$search_path"
               break
@@ -555,13 +555,13 @@ jobs:
           done
           
           if [ -z "$PLUGIN_PATH" ]; then
-            PLUGIN_PATH=$(find build -name "sep_color.plugin" -type d 2>/dev/null | head -1)
+            PLUGIN_PATH=$(find build -name "Stretch.plugin" -type d 2>/dev/null | head -1)
           fi
           
           if [ -n "$PLUGIN_PATH" ]; then
             mkdir -p "${{ github.workspace }}/artifacts"
             cp -R "$PLUGIN_PATH" "${{ github.workspace }}/artifacts/"
-            echo "Artifact copied: artifacts/sep_color.plugin"
+            echo "Artifact copied: artifacts/Stretch.plugin"
           else
             echo "::error::Build artifact not found"
             echo "Build directory contents:"
@@ -583,7 +583,7 @@ jobs:
           
           Set-Location "$env:PLUGIN_DIR\Win"
           
-          if (-not (Test-Path "sep_color.sln")) {
+          if (-not (Test-Path "Stretch.sln")) {
             Write-Host "Error: Solution file not found"
             Get-ChildItem
             exit 1
@@ -596,7 +596,7 @@ jobs:
           Write-Host "  Configuration: Release"
           Write-Host "  Platform: x64"
           
-          msbuild sep_color.sln `
+          msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
             /t:Build `
@@ -622,10 +622,10 @@ jobs:
           Write-Host "Searching for build artifact..."
           
           $searchPaths = @(
-            "x64\Release\sep_color.aex",
-            "..\output\sep_color.aex",
-            "Release\sep_color.aex",
-            ".\sep_color.aex"
+            "x64\Release\Stretch.aex",
+            "..\output\Stretch.aex",
+            "Release\Stretch.aex",
+            ".\Stretch.aex"
           )
           
           $aexPath = $null
@@ -637,14 +637,14 @@ jobs:
           }
           
           if (-not $aexPath) {
-            $aexPath = Get-ChildItem -Path . -Filter "sep_color.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $aexPath = Get-ChildItem -Path . -Filter "Stretch.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           }
           
           if ($aexPath) {
             $artifactsDir = "${{ github.workspace }}\artifacts"
             New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
             Copy-Item -Path $aexPath.FullName -Destination $artifactsDir -Force
-            Write-Host "Artifact copied: $artifactsDir\sep_color.aex"
+            Write-Host "Artifact copied: $artifactsDir\Stretch.aex"
           } else {
             Write-Host "Error: Build artifact not found"
             Get-ChildItem -Recurse -Depth 3 | Where-Object { $_.Extension -eq ".aex" -or $_.Name -like "*.obj" } | Select-Object FullName | Format-Table -AutoSize
@@ -660,7 +660,7 @@ jobs:
             exit 1
           }
           $dumpbinPath = $dumpbinCmd.Source
-          $artifactPath = Join-Path "${{ github.workspace }}" "artifacts\sep_color.aex"
+          $artifactPath = Join-Path "${{ github.workspace }}" "artifacts\Stretch.aex"
           if (-not (Test-Path $artifactPath)) {
             Write-Host "::error::Artifact not found at $artifactPath"
             exit 1
@@ -671,7 +671,7 @@ jobs:
           $hasEffectMain = $dumpbinOutput -match '\bEffectMain\b'
           $hasPluginData = $dumpbinOutput -match '\bPluginDataEntryFunction2\b'
           if (-not $hasEffectMain -or -not $hasPluginData) {
-            Write-Host "::error::Required exports not found in sep_color.aex"
+            Write-Host "::error::Required exports not found in Stretch.aex"
             exit 1
           }
           Write-Host "✓ Verified exports: EffectMain, PluginDataEntryFunction2"
@@ -679,7 +679,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: sep_color-${{ matrix.platform }}
+          name: Stretch-${{ matrix.platform }}
           path: artifacts/
           retention-days: 30
           if-no-files-found: error
