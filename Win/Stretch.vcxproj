@@ -158,6 +158,9 @@
     <Bscmake>
       <OutputFile>$(IntDir)$(TargetName).bsc</OutputFile>
     </Bscmake>
+    <PreBuildEvent>
+      <Command>if not exist "$(IntDir)" mkdir "$(IntDir)"</Command>
+    </PreBuildEvent>
     <PostBuildEvent>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -218,6 +221,9 @@
     <Bscmake>
       <OutputFile>$(IntDir)$(TargetName).bsc</OutputFile>
     </Bscmake>
+    <PreBuildEvent>
+      <Command>if not exist "$(IntDir)" mkdir "$(IntDir)"</Command>
+    </PreBuildEvent>
     <PostBuildEvent>
     </PostBuildEvent>
   </ItemDefinitionGroup>
@@ -342,6 +348,9 @@
     <Bscmake>
       <OutputFile>$(IntDir)$(TargetName).bsc</OutputFile>
     </Bscmake>
+    <PreBuildEvent>
+      <Command>if not exist "$(IntDir)" mkdir "$(IntDir)"</Command>
+    </PreBuildEvent>
     <PostBuildEvent>
     </PostBuildEvent>
   </ItemDefinitionGroup>
