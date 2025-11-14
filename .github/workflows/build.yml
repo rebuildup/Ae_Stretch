@@ -664,23 +664,52 @@ jobs:
             Write-Host "=== Extracting error messages ==="
             $allErrors = @()
             
+            # MSBuild error patterns
+            $errorPatterns = @(
+              "error\s+[A-Z]\d+:",  # error C1234:, error LNK1234:, etc.
+              "MSB\d+:",            # MSB1234: error
+              "error\s+:",           # error:
+              "Error\s+:",           # Error:
+              "ERROR\s+:",            # ERROR:
+              "失敗",                 # Japanese: failure
+              "Failed",              # Failed
+              "FAILED",              # FAILED
+              "失敗しました",         # Japanese: failed
+              "ビルドに失敗",         # Japanese: build failed
+              "Build FAILED"         # Build FAILED
+            )
+            
+            $combinedPattern = "(" + ($errorPatterns -join "|") + ")"
+            
             if (Test-Path $buildOutputFile) {
-              $allErrors += Get-Content $buildOutputFile | Select-String -Pattern "(error|Error|ERROR|失敗|Failed|FAILED)" -Context 2,2
+              Write-Host "Searching in build output file..."
+              $allErrors += Get-Content $buildOutputFile | Select-String -Pattern $combinedPattern -Context 3,3
             }
             if (Test-Path $buildLogFile) {
-              $allErrors += Get-Content $buildLogFile | Select-String -Pattern "(error|Error|ERROR|失敗|Failed|FAILED)" -Context 2,2
+              Write-Host "Searching in build log file..."
+              $allErrors += Get-Content $buildLogFile | Select-String -Pattern $combinedPattern -Context 3,3
             }
             
             if ($allErrors.Count -gt 0) {
               Write-Host "Found $($allErrors.Count) error-related lines:"
-              $allErrors | Select-Object -First 100 | ForEach-Object { 
+              $allErrors | Select-Object -First 150 | ForEach-Object { 
                 Write-Host "  $_"
               }
             } else {
               Write-Host "No explicit error messages found in logs"
-              Write-Host "Showing last 50 lines of build output:"
+              Write-Host ""
+              Write-Host "=== Showing last 100 lines of build output file ==="
               if (Test-Path $buildOutputFile) {
-                Get-Content $buildOutputFile -Tail 50 | ForEach-Object { Write-Host "  $_" }
+                Get-Content $buildOutputFile -Tail 100 | ForEach-Object { Write-Host "  $_" }
+              } else {
+                Write-Host "  Build output file not found: $buildOutputFile"
+              }
+              Write-Host ""
+              Write-Host "=== Showing last 100 lines of build log file ==="
+              if (Test-Path $buildLogFile) {
+                Get-Content $buildLogFile -Tail 100 | ForEach-Object { Write-Host "  $_" }
+              } else {
+                Write-Host "  Build log file not found: $buildLogFile"
               }
             }
             Write-Host ""
