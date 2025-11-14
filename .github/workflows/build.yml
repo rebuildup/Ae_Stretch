@@ -642,7 +642,7 @@ jobs:
             /v:normal `
             /m `
             /nologo `
-            /clp:ShowTimestamp;Verbosity=normal;ErrorsOnly;WarningsOnly `
+            "/clp:ShowTimestamp;Verbosity=normal;ErrorsOnly;WarningsOnly" `
             2>&1 | Tee-Object -FilePath $buildOutputFile
           
           # Display all output
