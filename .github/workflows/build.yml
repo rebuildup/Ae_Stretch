@@ -581,23 +581,7 @@ jobs:
           New-Item -ItemType Directory -Path $pluginBuildDir -Force | Out-Null
           $env:AE_PLUGIN_BUILD_DIR = $pluginBuildDir
           
-          Write-Host "Environment check:"
-          Write-Host "  SDK Root: $env:SDK_ROOT"
-          Write-Host "  Plugin Dir: $env:PLUGIN_DIR"
-          Write-Host "  Headers: $(Test-Path "$env:SDK_ROOT\Headers")"
-          Write-Host "  Util: $(Test-Path "$env:SDK_ROOT\Util")"
-          Write-Host "  Resources: $(Test-Path "$env:SDK_ROOT\Resources")"
-          $piplTool = "$env:SDK_ROOT\Resources\PiPLTool.exe"
-          Write-Host "  PiPLTool: $(Test-Path $piplTool)"
-          if (Test-Path $piplTool) {
-            Write-Host "  PiPLTool path: $piplTool"
-          }
-          
           Set-Location "$env:PLUGIN_DIR\Win"
-          
-          Write-Host "Current directory: $(Get-Location)"
-          Write-Host "Files in current directory:"
-          Get-ChildItem | Select-Object Name | Format-Table -AutoSize
           
           if (-not (Test-Path "Stretch.sln")) {
             Write-Host "Error: Solution file not found"
@@ -611,54 +595,24 @@ jobs:
           Write-Host "Build configuration:"
           Write-Host "  Configuration: Release"
           Write-Host "  Platform: x64"
-          Write-Host "  Output directory: $outputDir"
           
-          Write-Host "Starting MSBuild..."
-          $buildLog = "${{ github.workspace }}\build.log"
-          
-          # Run MSBuild and capture output
           msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
             /t:Build `
-            /v:detailed `
+            /v:normal `
             /m `
-            /nologo `
-            /flp:logfile=$buildLog;verbosity=detailed 2>&1 | Tee-Object -Variable buildOutput
-          
-          # Always show build output
-          Write-Host ""
-          Write-Host "=== MSBuild Output ==="
-          $buildOutput | ForEach-Object { Write-Host $_ }
+            /nologo
           
           if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "Error: Build failed (exit code: $LASTEXITCODE)"
             Write-Host ""
-            if (Test-Path $buildLog) {
-              Write-Host "Last 200 lines of build log file:"
-              Get-Content $buildLog -Tail 200
-            }
-            Write-Host ""
             Write-Host "Checking SDK structure:"
             Write-Host "  SDK Root: $env:SDK_ROOT"
             Write-Host "  Headers: $(Test-Path "$env:SDK_ROOT\Headers")"
             Write-Host "  Util: $(Test-Path "$env:SDK_ROOT\Util")"
-            Write-Host "  Resources: $(Test-Path "$env:SDK_ROOT\Resources")"
-            $piplTool = "$env:SDK_ROOT\Resources\PiPLTool"
-            $piplToolExe = "$env:SDK_ROOT\Resources\PiPLTool.exe"
-            Write-Host "  PiPLTool (no ext): $(Test-Path $piplTool)"
-            Write-Host "  PiPLTool.exe: $(Test-Path $piplToolExe)"
-            if (Test-Path $piplTool) {
-              Write-Host "  PiPLTool path: $piplTool"
-            } elseif (Test-Path $piplToolExe) {
-              Write-Host "  PiPLTool.exe path: $piplToolExe"
-            }
-            Write-Host ""
-            Write-Host "Checking project directory:"
-            Write-Host "  Current dir: $(Get-Location)"
-            Write-Host "  StretchPiPL.r: $(Test-Path "..\StretchPiPL.r")"
-            Write-Host "  StretchPiPL.rc: $(Test-Path "StretchPiPL.rc")"
+            Write-Host "  PiPLTool: $(Test-Path "$env:SDK_ROOT\Resources\PiPLTool.exe")"
             exit 1
           }
           
