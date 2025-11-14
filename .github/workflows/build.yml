@@ -660,9 +660,10 @@ jobs:
               Write-Host ""
             }
             
-            # Extract and display all error messages
-            Write-Host "=== Extracting error messages ==="
+            # Extract and display all error and warning messages
+            Write-Host "=== Extracting error and warning messages ==="
             $allErrors = @()
+            $allWarnings = @()
             
             # MSBuild error patterns
             $errorPatterns = @(
@@ -679,15 +680,35 @@ jobs:
               "Build FAILED"         # Build FAILED
             )
             
-            $combinedPattern = "(" + ($errorPatterns -join "|") + ")"
+            # MSBuild warning patterns
+            $warningPatterns = @(
+              "warning\s+[A-Z]\d+:",  # warning C1234:, warning LNK1234:, etc.
+              "warning\s+:",          # warning:
+              "Warning\s+:",          # Warning:
+              "WARNING\s+:",          # WARNING:
+              "警告"                  # Japanese: warning
+            )
+            
+            $errorPattern = "(" + ($errorPatterns -join "|") + ")"
+            $warningPattern = "(" + ($warningPatterns -join "|") + ")"
             
             if (Test-Path $buildOutputFile) {
               Write-Host "Searching in build output file..."
-              $allErrors += Get-Content $buildOutputFile | Select-String -Pattern $combinedPattern -Context 3,3
+              $allErrors += Get-Content $buildOutputFile | Select-String -Pattern $errorPattern -Context 3,3
+              $allWarnings += Get-Content $buildOutputFile | Select-String -Pattern $warningPattern -Context 2,2
             }
             if (Test-Path $buildLogFile) {
               Write-Host "Searching in build log file..."
-              $allErrors += Get-Content $buildLogFile | Select-String -Pattern $combinedPattern -Context 3,3
+              $allErrors += Get-Content $buildLogFile | Select-String -Pattern $errorPattern -Context 3,3
+              $allWarnings += Get-Content $buildLogFile | Select-String -Pattern $warningPattern -Context 2,2
+            }
+            
+            if ($allWarnings.Count -gt 0) {
+              Write-Host "=== Warnings (that may be treated as errors) ==="
+              $allWarnings | Select-Object -First 50 | ForEach-Object { 
+                Write-Host "  $_"
+              }
+              Write-Host ""
             }
             
             if ($allErrors.Count -gt 0) {
