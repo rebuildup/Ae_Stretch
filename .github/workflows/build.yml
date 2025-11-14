@@ -603,15 +603,33 @@ jobs:
           Write-Host "  StretchPiPL.r exists: $(Test-Path "..\StretchPiPL.r")"
           Write-Host ""
           
+          # Check paths before building
+          Write-Host "Pre-build path checks:"
+          $projectDir = (Get-Location).Path
+          $expectedHeaders = Join-Path (Split-Path (Split-Path (Split-Path $projectDir -Parent) -Parent) -Parent) "Headers"
+          $expectedPiPLTool = Join-Path (Split-Path (Split-Path (Split-Path $projectDir -Parent) -Parent) -Parent) "Resources\PiPLTool.exe"
+          Write-Host "  Project Dir: $projectDir"
+          Write-Host "  Expected Headers: $expectedHeaders"
+          Write-Host "  Headers exists: $(Test-Path $expectedHeaders)"
+          Write-Host "  Expected PiPLTool: $expectedPiPLTool"
+          Write-Host "  PiPLTool exists: $(Test-Path $expectedPiPLTool)"
+          Write-Host "  SDK Root: $env:SDK_ROOT"
+          Write-Host "  SDK Headers: $(Test-Path "$env:SDK_ROOT\Headers")"
+          Write-Host "  SDK PiPLTool: $(Test-Path "$env:SDK_ROOT\Resources\PiPLTool.exe")"
+          Write-Host ""
+          
           # Run MSBuild with detailed output
           Write-Host "Starting MSBuild..."
+          $buildLogFile = Join-Path $projectDir "build.log"
           $buildOutput = & msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
             /t:Build `
-            /v:normal `
+            /v:detailed `
             /m `
-            /nologo 2>&1
+            /nologo `
+            /fileLogger `
+            /fileLoggerParameters:LogFile="$buildLogFile";Verbosity=detailed 2>&1
           
           # Display build output
           $buildOutput | ForEach-Object { Write-Host $_ }
@@ -620,9 +638,26 @@ jobs:
             Write-Host ""
             Write-Host "Error: Build failed (exit code: $LASTEXITCODE)"
             Write-Host ""
-            Write-Host "=== Last 100 lines of build output ==="
-            $buildOutput | Select-Object -Last 100 | ForEach-Object { Write-Host $_ }
+            
+            # Show build log file if it exists
+            if (Test-Path $buildLogFile) {
+              Write-Host "=== Build log file (last 200 lines) ==="
+              Get-Content $buildLogFile -Tail 200 | ForEach-Object { Write-Host $_ }
+              Write-Host ""
+            }
+            
+            Write-Host "=== Last 200 lines of build output ==="
+            $buildOutput | Select-Object -Last 200 | ForEach-Object { Write-Host $_ }
             Write-Host ""
+            
+            # Check for specific error patterns
+            $errorLines = $buildOutput | Select-String -Pattern "error|Error|ERROR" | Select-Object -First 50
+            if ($errorLines) {
+              Write-Host "=== Error lines ==="
+              $errorLines | ForEach-Object { Write-Host $_ }
+              Write-Host ""
+            }
+            
             Write-Host "Checking SDK structure:"
             Write-Host "  SDK Root: $env:SDK_ROOT"
             Write-Host "  Headers: $(Test-Path "$env:SDK_ROOT\Headers")"
@@ -638,6 +673,15 @@ jobs:
             Write-Host "  Current dir: $(Get-Location)"
             Write-Host "  StretchPiPL.r: $(Test-Path "..\StretchPiPL.r")"
             Write-Host "  StretchPiPL.rc: $(Test-Path "StretchPiPL.rc")"
+            Write-Host ""
+            Write-Host "Checking intermediate directories:"
+            $intDir = "x64\Release"
+            if (Test-Path $intDir) {
+              Write-Host "  Intermediate dir exists: $intDir"
+              Get-ChildItem $intDir | Select-Object -First 10 | ForEach-Object { Write-Host "    $($_.Name)" }
+            } else {
+              Write-Host "  Intermediate dir not found: $intDir"
+            }
             exit 1
           }
           
