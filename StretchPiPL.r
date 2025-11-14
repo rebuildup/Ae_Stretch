@@ -16,7 +16,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		Category {
-			"Stretch"
+			"361do_plugins"
 		},
 #ifdef AE_OS_WIN
 	#ifdef AE_PROC_INTELx64
@@ -56,7 +56,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		AE_Effect_Match_Name {
-			"Stretch_v2"
+			"361do Stretch_v2"
 		},
 		
 		AE_Reserved_Info {
@@ -64,7 +64,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		AE_Effect_Support_URL {
-			"https://www.adobe.com"
+			"https://x.com/361do_sleep"
 		}
 	}
 };

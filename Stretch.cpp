@@ -1,32 +1,43 @@
-﻿#include "Stretch.h"
+#include "Stretch.h"
+
+#include <algorithm>
+#include <thread>
+#include <vector>
+#include <cmath>
+
+// -----------------------------------------------------------------------------
+// UI / boilerplate
+// -----------------------------------------------------------------------------
 
 static PF_Err
-About(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
+About(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
-    if (in_data && in_data->pica_basicP) {
+    if (in_data && in_data->pica_basicP)
+    {
         AEGP_SuiteHandler suites(in_data->pica_basicP);
         suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg,
-            "%s v%d.%d\r%s",
-            STR(StrID_Name),
-            MAJOR_VERSION,
-            MINOR_VERSION,
-            STR(StrID_Description));
+                                              "%s v%d.%d\r%s",
+                                              STR(StrID_Name),
+                                              MAJOR_VERSION,
+                                              MINOR_VERSION,
+                                              STR(StrID_Description));
     }
-    else {
+    else
+    {
         // Fallback if pica_basicP is NULL
         PF_SPRINTF(out_data->return_msg,
-            "%s v%d.%d\r%s",
-            STR(StrID_Name),
-            MAJOR_VERSION,
-            MINOR_VERSION,
-            STR(StrID_Description));
+                   "%s v%d.%d\r%s",
+                   STR(StrID_Name),
+                   MAJOR_VERSION,
+                   MINOR_VERSION,
+                   STR(StrID_Description));
     }
-    
+
     return PF_Err_NONE;
 }
 
 static PF_Err
-GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
+GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
     out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE;
@@ -35,12 +46,12 @@ GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_
 }
 
 static PF_Err
-FrameSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
+FrameSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
     return PF_Err_NONE;
 }
 
-static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
+static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
     PF_Err err = PF_Err_NONE;
     PF_ParamDef def;
@@ -48,9 +59,9 @@ static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef*
     AEFX_CLR_STRUCT(def);
 
     PF_ADD_POINT("Anchor Point",
-        50, 50,
-        false,
-        ANCHOR_POINT_ID);
+                 50, 50,
+                 false,
+                 ANCHOR_POINT_ID);
 
     PF_ADD_ANGLE("Angle", 0, ANGLE_ID);
 
@@ -77,134 +88,263 @@ static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef*
     return PF_Err_NONE;
 }
 
-#include <mutex>
-std::mutex renderMutex;
-#include <algorithm>
-
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
+// -----------------------------------------------------------------------------
+// Core stretch implementation (generic over pixel type)
+// -----------------------------------------------------------------------------
+
 template <typename Pixel>
-static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
+static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
     PF_Err err = PF_Err_NONE;
 
-    PF_EffectWorld* input = &params[0]->u.ld;
-    Pixel* input_pixels = reinterpret_cast<Pixel*>(input->data);
-    Pixel* output_pixels = reinterpret_cast<Pixel*>(output->data);
+    PF_EffectWorld *input = &params[0]->u.ld;
+    Pixel *input_pixels = reinterpret_cast<Pixel *>(input->data);
+    Pixel *output_pixels = reinterpret_cast<Pixel *>(output->data);
 
-    int width = output->width;
-    int height = output->height;
-    int input_row_pixels = input->rowbytes / sizeof(Pixel);
-    int output_row_pixels = output->rowbytes / sizeof(Pixel);
+    const int width = output->width;
+    const int height = output->height;
+    const int input_row_pixels = input->rowbytes / static_cast<int>(sizeof(Pixel));
+    const int output_row_pixels = output->rowbytes / static_cast<int>(sizeof(Pixel));
 
-    int anchor_x = (params[ANCHOR_POINT_ID]->u.td.x_value >> 16);
-    int anchor_y = (params[ANCHOR_POINT_ID]->u.td.y_value >> 16);
+    const int anchor_x = (params[ANCHOR_POINT_ID]->u.td.x_value >> 16);
+    const int anchor_y = (params[ANCHOR_POINT_ID]->u.td.y_value >> 16);
 
     float angle_param_value = static_cast<float>(params[ANGLE_ID]->u.ad.value >> 16);
-    angle_param_value = fmod(angle_param_value, 360.0f);
-    const float PI = 3.14159265358979323846f;
-    float angle = angle_param_value * (PI / 180.0f);
+    angle_param_value = std::fmod(angle_param_value, 360.0f);
+    const float angle_rad = angle_param_value * (static_cast<float>(M_PI) / 180.0f);
 
-    int shift_amount = static_cast<int>(params[SHIFT_AMOUNT_ID]->u.fs_d.value);
-    float downsize_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
-    float downsize_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
+    const int shift_amount = static_cast<int>(params[SHIFT_AMOUNT_ID]->u.fs_d.value);
+    const float downsize_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
+    const float downsize_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
 
-    int shift_pixels = static_cast<int>(shift_amount / min(downsize_x, downsize_y));
+    const float downsample = std::min(downsize_x, downsize_y);
+    const int shift_pixels = (downsample > 0.0f) ? static_cast<int>(shift_amount / downsample) : shift_amount;
 
-    int direction = params[DIRECTION_ID]->u.pd.value;
+    const int direction = params[DIRECTION_ID]->u.pd.value;
 
-    if (shift_amount == 0) {
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                output_pixels[y * output_row_pixels + x] = input_pixels[y * input_row_pixels + x];
-            }
-        }
+    if (shift_amount == 0 || shift_pixels <= 0)
+    {
+        // No-op stretch: just copy input to output.
+        PF_COPY(input, output, nullptr, nullptr);
         return err;
     }
 
+    const float perpendicular_x = -std::sin(angle_rad);
+    const float perpendicular_y = std::cos(angle_rad);
+
+    const float parallel_x = std::cos(angle_rad);
+    const float parallel_y = std::sin(angle_rad);
+
     int actual_shift = shift_pixels;
-    if (direction == 1) { // Both
+    if (direction == 1)
+    { // Both
         actual_shift = shift_pixels / 2;
     }
 
-    float perpendicular_x = -sin(angle);
-    float perpendicular_y = cos(angle);
+    if (actual_shift <= 0)
+    {
+        // Effective shift vanished after direction adjustment.
+        PF_COPY(input, output, nullptr, nullptr);
+        return err;
+    }
 
-    float parallel_x = cos(angle);
-    float parallel_y = sin(angle);
+    const float shift_x = perpendicular_x * static_cast<float>(actual_shift);
+    const float shift_y = perpendicular_y * static_cast<float>(actual_shift);
 
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            Pixel* output_pixel = output_pixels + y * output_row_pixels + x;
+    // Heuristic for thread count: avoid oversubscription and very tiny slices.
+    const int min_rows_per_thread = 32;
+    unsigned int hw_threads = std::thread::hardware_concurrency();
+    if (hw_threads == 0)
+    {
+        hw_threads = 4;
+    }
+    unsigned int max_threads_by_rows = static_cast<unsigned int>(std::max(1, height / min_rows_per_thread));
+    unsigned int thread_count = std::min(hw_threads, max_threads_by_rows);
+    if (thread_count <= 1)
+    {
+        thread_count = 1;
+    }
 
-            float rel_x = static_cast<float>(x - anchor_x);
-            float rel_y = static_cast<float>(y - anchor_y);
+    auto process_rows = [&](int y_start, int y_end)
+    {
+        for (int y = y_start; y < y_end; ++y)
+        {
+            Pixel *output_row = output_pixels + y * output_row_pixels;
 
-            float signed_distance_pixels = rel_x * perpendicular_x + rel_y * perpendicular_y;
+            // Precompute row-based geometry.
+            const float rel_y = static_cast<float>(y - anchor_y);
+            const float base_rel_x = static_cast<float>(-anchor_x);
 
-            float parallel_distance = rel_x * parallel_x + rel_y * parallel_y;
+            float signed_distance = base_rel_x * perpendicular_x + rel_y * perpendicular_y;
 
-            int border_x = static_cast<int>(anchor_x + (parallel_distance * parallel_x));
-            int border_y = static_cast<int>(anchor_y + (parallel_distance * parallel_y));
+            const float par_base = base_rel_x * parallel_x + rel_y * parallel_y;
+            float border_x_f = static_cast<float>(anchor_x) + par_base * parallel_x;
+            float border_y_f = static_cast<float>(anchor_y) + par_base * parallel_y;
 
-            border_x = std::clamp(border_x, 0, width - 1);
-            border_y = std::clamp(border_y, 0, height - 1);
+            const float signed_step = perpendicular_x;
+            const float border_x_step = parallel_x * parallel_x;
+            const float border_y_step = parallel_x * parallel_y;
 
-            Pixel* border_pixel = input_pixels + border_y * input_row_pixels + border_x;
+            for (int x = 0; x < width; ++x)
+            {
+                Pixel *output_pixel = output_row + x;
 
-            int src_x = x;
-            int src_y = y;
-            bool use_border_pixel = false;
+                const float sd = signed_distance;
 
-            switch (direction) {
-            case 1: // Both directions
-                if (fabs(signed_distance_pixels) < actual_shift) {
-                    use_border_pixel = true;
+                // Fast early-out for half-plane that remains unchanged.
+                if ((direction == 2 && sd < 0.0f) || (direction == 3 && sd > 0.0f))
+                {
+                    // Keep original pixel; caller may have pre-copied input to output.
                 }
-                else if (signed_distance_pixels > 0) {
-                    src_x = static_cast<int>(x - perpendicular_x * actual_shift);
-                    src_y = static_cast<int>(y - perpendicular_y * actual_shift);
-                }
-                else {
-                    src_x = static_cast<int>(x + perpendicular_x * actual_shift);
-                    src_y = static_cast<int>(y + perpendicular_y * actual_shift);
-                }
-                break;
+                else
+                {
+                    int border_x = static_cast<int>(border_x_f);
+                    int border_y = static_cast<int>(border_y_f);
 
-            case 2: // Forward direction
-                if (signed_distance_pixels >= 0 && signed_distance_pixels < actual_shift) {
-                    use_border_pixel = true;
-                }
-                else if (signed_distance_pixels >= actual_shift) {
-                    src_x = static_cast<int>(x - perpendicular_x * actual_shift);
-                    src_y = static_cast<int>(y - perpendicular_y * actual_shift);
-                }
-                break;
+                    if (border_x < 0)
+                    {
+                        border_x = 0;
+                    }
+                    else if (border_x >= width)
+                    {
+                        border_x = width - 1;
+                    }
 
-            case 3: // Backward direction
-                if (signed_distance_pixels <= 0 && signed_distance_pixels > -actual_shift) {
-                    use_border_pixel = true;
+                    if (border_y < 0)
+                    {
+                        border_y = 0;
+                    }
+                    else if (border_y >= height)
+                    {
+                        border_y = height - 1;
+                    }
+
+                    Pixel *border_pixel = input_pixels + border_y * input_row_pixels + border_x;
+
+                    int src_x = x;
+                    int src_y = y;
+                    bool use_border_pixel = false;
+
+                    switch (direction)
+                    {
+                    case 1: // Both directions
+                        if (std::fabs(sd) < static_cast<float>(actual_shift))
+                        {
+                            use_border_pixel = true;
+                        }
+                        else if (sd > 0.0f)
+                        {
+                            src_x = static_cast<int>(static_cast<float>(x) - shift_x);
+                            src_y = static_cast<int>(static_cast<float>(y) - shift_y);
+                        }
+                        else
+                        {
+                            src_x = static_cast<int>(static_cast<float>(x) + shift_x);
+                            src_y = static_cast<int>(static_cast<float>(y) + shift_y);
+                        }
+                        break;
+
+                    case 2: // Forward direction
+                        if (sd >= 0.0f && sd < static_cast<float>(actual_shift))
+                        {
+                            use_border_pixel = true;
+                        }
+                        else if (sd >= static_cast<float>(actual_shift))
+                        {
+                            src_x = static_cast<int>(static_cast<float>(x) - shift_x);
+                            src_y = static_cast<int>(static_cast<float>(y) - shift_y);
+                        }
+                        break;
+
+                    case 3: // Backward direction
+                        if (sd <= 0.0f && sd > -static_cast<float>(actual_shift))
+                        {
+                            use_border_pixel = true;
+                        }
+                        else if (sd <= -static_cast<float>(actual_shift))
+                        {
+                            src_x = static_cast<int>(static_cast<float>(x) + shift_x);
+                            src_y = static_cast<int>(static_cast<float>(y) + shift_y);
+                        }
+                        break;
+
+                    default:
+                        break;
+                    }
+
+                    if (use_border_pixel)
+                    {
+                        *output_pixel = *border_pixel;
+                    }
+                    else
+                    {
+                        if (src_x < 0)
+                        {
+                            src_x = 0;
+                        }
+                        else if (src_x >= width)
+                        {
+                            src_x = width - 1;
+                        }
+
+                        if (src_y < 0)
+                        {
+                            src_y = 0;
+                        }
+                        else if (src_y >= height)
+                        {
+                            src_y = height - 1;
+                        }
+
+                        Pixel *input_pixel = input_pixels + src_y * input_row_pixels + src_x;
+                        *output_pixel = *input_pixel;
+                    }
                 }
-                else if (signed_distance_pixels <= -actual_shift) {
-                    src_x = static_cast<int>(x + perpendicular_x * actual_shift);
-                    src_y = static_cast<int>(y + perpendicular_y * actual_shift);
-                }
-                break;
+
+                signed_distance += signed_step;
+                border_x_f += border_x_step;
+                border_y_f += border_y_step;
             }
+        }
+    };
 
-            // 出力ピクセルを設定
-            if (use_border_pixel) {
-                *output_pixel = *border_pixel;
-            }
-            else {
-                // 範囲チェック
-                src_x = std::clamp(src_x, 0, width - 1);
-                src_y = std::clamp(src_y, 0, height - 1);
+    // For directional modes where half of the image is unchanged,
+    // pre-fill output with input so early-outs are correct.
+    if (direction == 2 || direction == 3)
+    {
+        PF_COPY(input, output, nullptr, nullptr);
+    }
 
-                Pixel* input_pixel = input_pixels + src_y * input_row_pixels + src_x;
-                *output_pixel = *input_pixel;
+    if (thread_count == 1)
+    {
+        process_rows(0, height);
+    }
+    else
+    {
+        std::vector<std::thread> threads;
+        threads.reserve(thread_count);
+
+        const int rows_per_thread = height / static_cast<int>(thread_count);
+        const int remainder = height % static_cast<int>(thread_count);
+
+        int y_start = 0;
+        for (unsigned int i = 0; i < thread_count; ++i)
+        {
+            const int extra = (i < static_cast<unsigned int>(remainder)) ? 1 : 0;
+            const int y_end = y_start + rows_per_thread + extra;
+            threads.emplace_back(process_rows, y_start, y_end);
+            y_start = y_end;
+        }
+
+        for (auto &t : threads)
+        {
+            if (t.joinable())
+            {
+                t.join();
             }
         }
     }
@@ -212,56 +352,82 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     return err;
 }
 
-static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
+// -----------------------------------------------------------------------------
+// Bit-depth aware dispatch
+// -----------------------------------------------------------------------------
+
+static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
     PF_Err err = PF_Err_NONE;
 
-    if (output->world_flags & PF_WorldFlag_DEEP) {
-        // Deep color: determine bit depth from pitch
-        A_long pitch = output->rowbytes / output->width;
-        if (pitch == 4) {
-            // 16-bit per channel
-            err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
-        }
-        else if (pitch == 8) {
-            // 32-bit float per channel
-            err = RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
-        }
-        else {
-            // Default to 16-bit for deep color
-            err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
+    PF_PixelFormat format = PF_PixelFormat_ARGB32;
+
+    if (in_data && in_data->pica_basicP)
+    {
+        AEGP_SuiteHandler suites(in_data->pica_basicP);
+        PF_WorldSuite2 *wsP = suites.WorldSuite2();
+        if (wsP)
+        {
+            PF_Err pf_err = wsP->PF_GetPixelFormat(output, &format);
+            if (pf_err)
+            {
+                format = PF_PixelFormat_ARGB32;
+            }
         }
     }
-    else {
-        // Standard 8-bit
+
+    switch (format)
+    {
+    case PF_PixelFormat_ARGB64:
+        err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
+        break;
+    case PF_PixelFormat_ARGB128:
+        err = RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
+        break;
+    case PF_PixelFormat_ARGB32:
+    default:
         err = RenderGeneric<PF_Pixel>(in_data, out_data, params, output);
+        break;
     }
 
     return err;
 }
 
+// -----------------------------------------------------------------------------
+// Entry points
+// -----------------------------------------------------------------------------
+
 extern "C" DllExport
 PF_Err
-PluginDataEntryFunction2(PF_PluginDataPtr inPtr, PF_PluginDataCB2 inPluginDataCallBackPtr, SPBasicSuite* inSPBasicSuitePtr, const char* inHostName, const char* inHostVersion)
+PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
+                         PF_PluginDataCB2 inPluginDataCallBackPtr,
+                         SPBasicSuite *inSPBasicSuitePtr,
+                         const char *inHostName,
+                         const char *inHostVersion)
 {
     PF_Err result = PF_Err_INVALID_CALLBACK;
 
     result = PF_REGISTER_EFFECT_EXT2(
         inPtr,
         inPluginDataCallBackPtr,
-        "Stretch_v2",              // Name
-        "Stretch_v2",             // Match Name
-        "Stretch",                 // Category
-        AE_RESERVED_INFO,          // Reserved Info
-        "EffectMain",              // Entry point
-        "https://www.adobe.com");  // support URL
+        "Stretch_v2",                 // Name
+        "361do Stretch_v2",           // Match Name
+        "361do_plugins",              // Category
+        AE_RESERVED_INFO,             // Reserved Info
+        "EffectMain",                 // Entry point
+        "https://x.com/361do_sleep"); // support URL
 
     return result;
 }
 
 extern "C" DllExport
 PF_Err
-EffectMain(PF_Cmd cmd, PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output, void* extra)
+EffectMain(PF_Cmd cmd,
+           PF_InData *in_data,
+           PF_OutData *out_data,
+           PF_ParamDef *params[],
+           PF_LayerDef *output,
+           void *extra)
 {
     PF_Err err = PF_Err_NONE;
 
