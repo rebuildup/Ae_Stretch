@@ -87,7 +87,8 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
 
     float angle_param_value = (float)(params[ANGLE_ID]->u.ad.value >> 16);
     angle_param_value = fmod(angle_param_value, 360.0f);
-    float angle = angle_param_value * (M_PI / 180.0f);
+    const float PI = 3.14159265358979323846f;
+    float angle = angle_param_value * (PI / 180.0f);
 
     int shift_amount = static_cast<int>(params[SHIFT_AMOUNT_ID]->u.fs_d.value);
     float downsize_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
