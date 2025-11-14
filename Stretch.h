@@ -2,6 +2,10 @@
 #ifndef STRETCH_H
 #define STRETCH_H
 
+#ifdef _WIN32
+#define _USE_MATH_DEFINES
+#endif
+
 #include "AEConfig.h"
 #include "entry.h"
 #include "AE_Effect.h"
