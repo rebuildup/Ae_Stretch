@@ -127,7 +127,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     if (shift_amount == 0 || shift_pixels <= 0)
     {
         // No-op stretch: just copy input to output.
-        PF_COPY(input, output, NULL, NULL);
+        PF_COPY(*input, output, NULL, NULL);
         return err;
     }
 
@@ -146,7 +146,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     if (actual_shift <= 0)
     {
         // Effective shift vanished after direction adjustment.
-        PF_COPY(input, output, NULL, NULL);
+        PF_COPY(*input, output, NULL, NULL);
         return err;
     }
 
@@ -157,7 +157,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     // pre-fill output with input so early-outs are correct.
     if (direction == 2 || direction == 3)
     {
-        PF_COPY(input, output, NULL, NULL);
+        PF_COPY(*input, output, NULL, NULL);
     }
 
     // Single-threaded scanline processing with per-row precomputation.
