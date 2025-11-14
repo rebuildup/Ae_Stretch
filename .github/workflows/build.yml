@@ -621,6 +621,9 @@ jobs:
           # Run MSBuild with detailed output
           Write-Host "Starting MSBuild..."
           $buildLogFile = Join-Path $projectDir "build.log"
+          $buildOutputFile = Join-Path $projectDir "build_output.txt"
+          
+          # Capture both stdout and stderr to file and variable
           $buildOutput = & msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
@@ -629,34 +632,58 @@ jobs:
             /m `
             /nologo `
             /fileLogger `
-            "/fileLoggerParameters:LogFile=$buildLogFile;Verbosity=detailed" 2>&1
+            "/fileLoggerParameters:LogFile=$buildLogFile;Verbosity=detailed" `
+            2>&1 | Tee-Object -FilePath $buildOutputFile
           
           # Display build output
           $buildOutput | ForEach-Object { Write-Host $_ }
           
           if ($LASTEXITCODE -ne 0) {
             Write-Host ""
-            Write-Host "Error: Build failed (exit code: $LASTEXITCODE)"
+            Write-Host "::error::Build failed with exit code: $LASTEXITCODE"
             Write-Host ""
+            
+            # Show build output file if it exists
+            if (Test-Path $buildOutputFile) {
+              Write-Host "=== Build output file (last 300 lines) ==="
+              $outputLines = Get-Content $buildOutputFile
+              if ($outputLines) {
+                $outputLines | Select-Object -Last 300 | ForEach-Object { Write-Host $_ }
+              }
+              Write-Host ""
+            }
             
             # Show build log file if it exists
             if (Test-Path $buildLogFile) {
-              Write-Host "=== Build log file (last 200 lines) ==="
-              Get-Content $buildLogFile -Tail 200 | ForEach-Object { Write-Host $_ }
+              Write-Host "=== Build log file (last 300 lines) ==="
+              Get-Content $buildLogFile -Tail 300 | ForEach-Object { Write-Host $_ }
               Write-Host ""
             }
             
-            Write-Host "=== Last 200 lines of build output ==="
-            $buildOutput | Select-Object -Last 200 | ForEach-Object { Write-Host $_ }
+            # Extract and display all error messages
+            Write-Host "=== Extracting error messages ==="
+            $allErrors = @()
+            
+            if (Test-Path $buildOutputFile) {
+              $allErrors += Get-Content $buildOutputFile | Select-String -Pattern "(error|Error|ERROR|失敗|Failed|FAILED)" -Context 2,2
+            }
+            if (Test-Path $buildLogFile) {
+              $allErrors += Get-Content $buildLogFile | Select-String -Pattern "(error|Error|ERROR|失敗|Failed|FAILED)" -Context 2,2
+            }
+            
+            if ($allErrors.Count -gt 0) {
+              Write-Host "Found $($allErrors.Count) error-related lines:"
+              $allErrors | Select-Object -First 100 | ForEach-Object { 
+                Write-Host "  $_"
+              }
+            } else {
+              Write-Host "No explicit error messages found in logs"
+              Write-Host "Showing last 50 lines of build output:"
+              if (Test-Path $buildOutputFile) {
+                Get-Content $buildOutputFile -Tail 50 | ForEach-Object { Write-Host "  $_" }
+              }
+            }
             Write-Host ""
-            
-            # Check for specific error patterns
-            $errorLines = $buildOutput | Select-String -Pattern "error|Error|ERROR" | Select-Object -First 50
-            if ($errorLines) {
-              Write-Host "=== Error lines ==="
-              $errorLines | ForEach-Object { Write-Host $_ }
-              Write-Host ""
-            }
             
             Write-Host "Checking SDK structure:"
             Write-Host "  SDK Root: $env:SDK_ROOT"
