@@ -1,8 +1,6 @@
 #include "Stretch.h"
 
 #include <algorithm>
-#include <thread>
-#include <vector>
 #include <cmath>
 
 // -----------------------------------------------------------------------------
@@ -155,163 +153,6 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     const float shift_x = perpendicular_x * static_cast<float>(actual_shift);
     const float shift_y = perpendicular_y * static_cast<float>(actual_shift);
 
-    // Heuristic for thread count: avoid oversubscription and very tiny slices.
-    const int min_rows_per_thread = 32;
-    unsigned int hw_threads = std::thread::hardware_concurrency();
-    if (hw_threads == 0)
-    {
-        hw_threads = 4;
-    }
-    unsigned int max_threads_by_rows = static_cast<unsigned int>(std::max(1, height / min_rows_per_thread));
-    unsigned int thread_count = std::min(hw_threads, max_threads_by_rows);
-    if (thread_count <= 1)
-    {
-        thread_count = 1;
-    }
-
-    auto process_rows = [&](int y_start, int y_end)
-    {
-        for (int y = y_start; y < y_end; ++y)
-        {
-            Pixel *output_row = output_pixels + y * output_row_pixels;
-
-            // Precompute row-based geometry.
-            const float rel_y = static_cast<float>(y - anchor_y);
-            const float base_rel_x = static_cast<float>(-anchor_x);
-
-            float signed_distance = base_rel_x * perpendicular_x + rel_y * perpendicular_y;
-
-            const float par_base = base_rel_x * parallel_x + rel_y * parallel_y;
-            float border_x_f = static_cast<float>(anchor_x) + par_base * parallel_x;
-            float border_y_f = static_cast<float>(anchor_y) + par_base * parallel_y;
-
-            const float signed_step = perpendicular_x;
-            const float border_x_step = parallel_x * parallel_x;
-            const float border_y_step = parallel_x * parallel_y;
-
-            for (int x = 0; x < width; ++x)
-            {
-                Pixel *output_pixel = output_row + x;
-
-                const float sd = signed_distance;
-
-                // Fast early-out for half-plane that remains unchanged.
-                if ((direction == 2 && sd < 0.0f) || (direction == 3 && sd > 0.0f))
-                {
-                    // Keep original pixel; caller may have pre-copied input to output.
-                }
-                else
-                {
-                    int border_x = static_cast<int>(border_x_f);
-                    int border_y = static_cast<int>(border_y_f);
-
-                    if (border_x < 0)
-                    {
-                        border_x = 0;
-                    }
-                    else if (border_x >= width)
-                    {
-                        border_x = width - 1;
-                    }
-
-                    if (border_y < 0)
-                    {
-                        border_y = 0;
-                    }
-                    else if (border_y >= height)
-                    {
-                        border_y = height - 1;
-                    }
-
-                    Pixel *border_pixel = input_pixels + border_y * input_row_pixels + border_x;
-
-                    int src_x = x;
-                    int src_y = y;
-                    bool use_border_pixel = false;
-
-                    switch (direction)
-                    {
-                    case 1: // Both directions
-                        if (std::fabs(sd) < static_cast<float>(actual_shift))
-                        {
-                            use_border_pixel = true;
-                        }
-                        else if (sd > 0.0f)
-                        {
-                            src_x = static_cast<int>(static_cast<float>(x) - shift_x);
-                            src_y = static_cast<int>(static_cast<float>(y) - shift_y);
-                        }
-                        else
-                        {
-                            src_x = static_cast<int>(static_cast<float>(x) + shift_x);
-                            src_y = static_cast<int>(static_cast<float>(y) + shift_y);
-                        }
-                        break;
-
-                    case 2: // Forward direction
-                        if (sd >= 0.0f && sd < static_cast<float>(actual_shift))
-                        {
-                            use_border_pixel = true;
-                        }
-                        else if (sd >= static_cast<float>(actual_shift))
-                        {
-                            src_x = static_cast<int>(static_cast<float>(x) - shift_x);
-                            src_y = static_cast<int>(static_cast<float>(y) - shift_y);
-                        }
-                        break;
-
-                    case 3: // Backward direction
-                        if (sd <= 0.0f && sd > -static_cast<float>(actual_shift))
-                        {
-                            use_border_pixel = true;
-                        }
-                        else if (sd <= -static_cast<float>(actual_shift))
-                        {
-                            src_x = static_cast<int>(static_cast<float>(x) + shift_x);
-                            src_y = static_cast<int>(static_cast<float>(y) + shift_y);
-                        }
-                        break;
-
-                    default:
-                        break;
-                    }
-
-                    if (use_border_pixel)
-                    {
-                        *output_pixel = *border_pixel;
-                    }
-                    else
-                    {
-                        if (src_x < 0)
-                        {
-                            src_x = 0;
-                        }
-                        else if (src_x >= width)
-                        {
-                            src_x = width - 1;
-                        }
-
-                        if (src_y < 0)
-                        {
-                            src_y = 0;
-                        }
-                        else if (src_y >= height)
-                        {
-                            src_y = height - 1;
-                        }
-
-                        Pixel *input_pixel = input_pixels + src_y * input_row_pixels + src_x;
-                        *output_pixel = *input_pixel;
-                    }
-                }
-
-                signed_distance += signed_step;
-                border_x_f += border_x_step;
-                border_y_f += border_y_step;
-            }
-        }
-    };
-
     // For directional modes where half of the image is unchanged,
     // pre-fill output with input so early-outs are correct.
     if (direction == 2 || direction == 3)
@@ -319,33 +160,139 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
         PF_COPY(input, output, NULL, NULL);
     }
 
-    if (thread_count == 1)
+    // Single-threaded scanline processing with per-row precomputation.
+    for (int y = 0; y < height; ++y)
     {
-        process_rows(0, height);
-    }
-    else
-    {
-        std::vector<std::thread> threads;
-        threads.reserve(thread_count);
+        Pixel *output_row = output_pixels + y * output_row_pixels;
 
-        const int rows_per_thread = height / static_cast<int>(thread_count);
-        const int remainder = height % static_cast<int>(thread_count);
+        const float rel_y = static_cast<float>(y - anchor_y);
+        const float base_rel_x = static_cast<float>(-anchor_x);
 
-        int y_start = 0;
-        for (unsigned int i = 0; i < thread_count; ++i)
+        float signed_distance = base_rel_x * perpendicular_x + rel_y * perpendicular_y;
+
+        const float par_base = base_rel_x * parallel_x + rel_y * parallel_y;
+        float border_x_f = static_cast<float>(anchor_x) + par_base * parallel_x;
+        float border_y_f = static_cast<float>(anchor_y) + par_base * parallel_y;
+
+        const float signed_step = perpendicular_x;
+        const float border_x_step = parallel_x * parallel_x;
+        const float border_y_step = parallel_x * parallel_y;
+
+        for (int x = 0; x < width; ++x)
         {
-            const int extra = (i < static_cast<unsigned int>(remainder)) ? 1 : 0;
-            const int y_end = y_start + rows_per_thread + extra;
-            threads.emplace_back(process_rows, y_start, y_end);
-            y_start = y_end;
-        }
+            Pixel *output_pixel = output_row + x;
 
-        for (auto &t : threads)
-        {
-            if (t.joinable())
+            const float sd = signed_distance;
+
+            // Fast early-out for half-plane that remains unchanged.
+            if (!((direction == 2 && sd < 0.0f) || (direction == 3 && sd > 0.0f)))
             {
-                t.join();
+                int border_x = static_cast<int>(border_x_f);
+                int border_y = static_cast<int>(border_y_f);
+
+                if (border_x < 0)
+                {
+                    border_x = 0;
+                }
+                else if (border_x >= width)
+                {
+                    border_x = width - 1;
+                }
+
+                if (border_y < 0)
+                {
+                    border_y = 0;
+                }
+                else if (border_y >= height)
+                {
+                    border_y = height - 1;
+                }
+
+                Pixel *border_pixel = input_pixels + border_y * input_row_pixels + border_x;
+
+                int src_x = x;
+                int src_y = y;
+                bool use_border_pixel = false;
+
+                switch (direction)
+                {
+                case 1: // Both directions
+                    if (std::fabs(sd) < static_cast<float>(actual_shift))
+                    {
+                        use_border_pixel = true;
+                    }
+                    else if (sd > 0.0f)
+                    {
+                        src_x = static_cast<int>(static_cast<float>(x) - shift_x);
+                        src_y = static_cast<int>(static_cast<float>(y) - shift_y);
+                    }
+                    else
+                    {
+                        src_x = static_cast<int>(static_cast<float>(x) + shift_x);
+                        src_y = static_cast<int>(static_cast<float>(y) + shift_y);
+                    }
+                    break;
+
+                case 2: // Forward direction
+                    if (sd >= 0.0f && sd < static_cast<float>(actual_shift))
+                    {
+                        use_border_pixel = true;
+                    }
+                    else if (sd >= static_cast<float>(actual_shift))
+                    {
+                        src_x = static_cast<int>(static_cast<float>(x) - shift_x);
+                        src_y = static_cast<int>(static_cast<float>(y) - shift_y);
+                    }
+                    break;
+
+                case 3: // Backward direction
+                    if (sd <= 0.0f && sd > -static_cast<float>(actual_shift))
+                    {
+                        use_border_pixel = true;
+                    }
+                    else if (sd <= -static_cast<float>(actual_shift))
+                    {
+                        src_x = static_cast<int>(static_cast<float>(x) + shift_x);
+                        src_y = static_cast<int>(static_cast<float>(y) + shift_y);
+                    }
+                    break;
+
+                default:
+                    break;
+                }
+
+                if (use_border_pixel)
+                {
+                    *output_pixel = *border_pixel;
+                }
+                else
+                {
+                    if (src_x < 0)
+                    {
+                        src_x = 0;
+                    }
+                    else if (src_x >= width)
+                    {
+                        src_x = width - 1;
+                    }
+
+                    if (src_y < 0)
+                    {
+                        src_y = 0;
+                    }
+                    else if (src_y >= height)
+                    {
+                        src_y = height - 1;
+                    }
+
+                    Pixel *input_pixel = input_pixels + src_y * input_row_pixels + src_x;
+                    *output_pixel = *input_pixel;
+                }
             }
+
+            signed_distance += signed_step;
+            border_x_f += border_x_step;
+            border_y_f += border_y_step;
         }
     }
 
