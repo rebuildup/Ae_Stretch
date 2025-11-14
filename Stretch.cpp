@@ -238,6 +238,7 @@ PluginDataEntryFunction2(PF_PluginDataPtr inPtr, PF_PluginDataCB2 inPluginDataCa
     return result;
 }
 
+extern "C" DllExport
 PF_Err
 EffectMain(PF_Cmd cmd, PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output, void* extra)
 {
