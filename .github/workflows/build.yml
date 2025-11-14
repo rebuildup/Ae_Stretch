@@ -595,22 +595,33 @@ jobs:
           Write-Host "Build configuration:"
           Write-Host "  Configuration: Release"
           Write-Host "  Platform: x64"
+          Write-Host ""
+          Write-Host "Checking environment:"
+          Write-Host "  SDK Root: $env:SDK_ROOT"
+          Write-Host "  Plugin Dir: $env:PLUGIN_DIR"
+          Write-Host "  Current dir: $(Get-Location)"
+          Write-Host "  StretchPiPL.r exists: $(Test-Path "..\StretchPiPL.r")"
+          Write-Host ""
           
-          # Run MSBuild and capture output
-          $buildOutput = msbuild Stretch.sln `
+          # Run MSBuild with detailed output
+          Write-Host "Starting MSBuild..."
+          msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
             /t:Build `
-            /v:normal `
+            /v:detailed `
             /m `
-            /nologo 2>&1
-          
-          # Display build output
-          $buildOutput | ForEach-Object { Write-Host $_ }
+            /nologo `
+            /flp:logfile="${{ github.workspace }}\build.log";verbosity=detailed
           
           if ($LASTEXITCODE -ne 0) {
             Write-Host ""
             Write-Host "Error: Build failed (exit code: $LASTEXITCODE)"
+            Write-Host ""
+            if (Test-Path "${{ github.workspace }}\build.log") {
+              Write-Host "=== Last 100 lines of build log ==="
+              Get-Content "${{ github.workspace }}\build.log" -Tail 100
+            }
             Write-Host ""
             Write-Host "Checking SDK structure:"
             Write-Host "  SDK Root: $env:SDK_ROOT"
@@ -627,9 +638,6 @@ jobs:
             Write-Host "  Current dir: $(Get-Location)"
             Write-Host "  StretchPiPL.r: $(Test-Path "..\StretchPiPL.r")"
             Write-Host "  StretchPiPL.rc: $(Test-Path "StretchPiPL.rc")"
-            Write-Host ""
-            Write-Host "Last 50 lines of build output:"
-            $buildOutput | Select-Object -Last 50 | ForEach-Object { Write-Host $_ }
             exit 1
           }
           
