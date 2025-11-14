@@ -85,7 +85,7 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     int anchor_x = (params[ANCHOR_POINT_ID]->u.td.x_value >> 16);
     int anchor_y = (params[ANCHOR_POINT_ID]->u.td.y_value >> 16);
 
-    float angle_param_value = (float)(params[ANGLE_ID]->u.ad.value >> 16);
+    float angle_param_value = static_cast<float>(params[ANGLE_ID]->u.ad.value >> 16);
     angle_param_value = fmod(angle_param_value, 360.0f);
     const float PI = 3.14159265358979323846f;
     float angle = angle_param_value * (PI / 180.0f);
@@ -122,8 +122,8 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
         for (int x = 0; x < width; x++) {
             Pixel* output_pixel = output_pixels + y * output_row_pixels + x;
 
-            float rel_x = (x - anchor_x);
-            float rel_y = (y - anchor_y);
+            float rel_x = static_cast<float>(x - anchor_x);
+            float rel_y = static_cast<float>(y - anchor_y);
 
             float signed_distance_pixels = rel_x * perpendicular_x + rel_y * perpendicular_y;
 
