@@ -3,8 +3,25 @@
 static PF_Err
 About(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
-    AEGP_SuiteHandler suites(in_data->pica_basicP);
-    suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg, "%s v%d.%d\r%s", STR(StrID_Name), MAJOR_VERSION, MINOR_VERSION, STR(StrID_Description));
+    if (in_data && in_data->pica_basicP) {
+        AEGP_SuiteHandler suites(in_data->pica_basicP);
+        suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg,
+            "%s v%d.%d\r%s",
+            STR(StrID_Name),
+            MAJOR_VERSION,
+            MINOR_VERSION,
+            STR(StrID_Description));
+    }
+    else {
+        // Fallback if pica_basicP is NULL
+        PF_SPRINTF(out_data->return_msg,
+            "%s v%d.%d\r%s",
+            STR(StrID_Name),
+            MAJOR_VERSION,
+            MINOR_VERSION,
+            STR(StrID_Description));
+    }
+    
     return PF_Err_NONE;
 }
 
@@ -199,20 +216,24 @@ static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* para
 {
     PF_Err err = PF_Err_NONE;
 
-    int pitch = output->rowbytes / output->width;
-
     if (output->world_flags & PF_WorldFlag_DEEP) {
-        if (pitch < 6) {
+        // Deep color: determine bit depth from pitch
+        A_long pitch = output->rowbytes / output->width;
+        if (pitch == 4) {
+            // 16-bit per channel
             err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
         }
-        else if (pitch < 12) {
-            err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
+        else if (pitch == 8) {
+            // 32-bit float per channel
+            err = RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
         }
         else {
-            err = RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
+            // Default to 16-bit for deep color
+            err = RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
         }
     }
     else {
+        // Standard 8-bit
         err = RenderGeneric<PF_Pixel>(in_data, out_data, params, output);
     }
 
@@ -243,27 +264,32 @@ PF_Err
 EffectMain(PF_Cmd cmd, PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output, void* extra)
 {
     PF_Err err = PF_Err_NONE;
-    try
+
+    switch (cmd)
     {
-        switch (cmd)
-        {
-        case PF_Cmd_ABOUT:
-            err = About(in_data, out_data, params, output);
-            break;
-        case PF_Cmd_GLOBAL_SETUP:
-            err = GlobalSetup(in_data, out_data, params, output);
-            break;
-        case PF_Cmd_PARAMS_SETUP:
-            err = ParamsSetup(in_data, out_data, params, output);
-            break;
-        case PF_Cmd_RENDER:
-            err = Render(in_data, out_data, params, output);
-            break;
-        }
+    case PF_Cmd_ABOUT:
+        err = About(in_data, out_data, params, output);
+        break;
+
+    case PF_Cmd_GLOBAL_SETUP:
+        err = GlobalSetup(in_data, out_data, params, output);
+        break;
+
+    case PF_Cmd_PARAMS_SETUP:
+        err = ParamsSetup(in_data, out_data, params, output);
+        break;
+
+    case PF_Cmd_FRAME_SETUP:
+        err = FrameSetup(in_data, out_data, params, output);
+        break;
+
+    case PF_Cmd_RENDER:
+        err = Render(in_data, out_data, params, output);
+        break;
+
+    default:
+        break;
     }
-    catch (PF_Err& thrown_err)
-    {
-        err = thrown_err;
-    }
+
     return err;
 }
