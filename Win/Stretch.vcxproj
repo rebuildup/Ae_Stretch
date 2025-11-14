@@ -99,6 +99,12 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">
     <OutDir>$(AE_PLUGIN_BUILD_DIR)\</OutDir>
   </PropertyGroup>
+  <PropertyGroup>
+    <SDK_ROOT Condition="'$(SDK_ROOT)' == ''">$(ProjectDir)..\..\..</SDK_ROOT>
+    <SDK_HEADERS>$(SDK_ROOT)\Headers</SDK_HEADERS>
+    <SDK_RESOURCES>$(SDK_ROOT)\Resources</SDK_RESOURCES>
+    <SDK_UTIL>$(SDK_ROOT)\Util</SDK_UTIL>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Midl>
       <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
@@ -172,7 +178,7 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\Headers;..\..\..\Headers\SP;..\..\..\Headers\Win;..\..\..\Resources;..\..\..\Util;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SDK_HEADERS);$(SDK_HEADERS)\SP;$(SDK_HEADERS)\Win;$(SDK_RESOURCES);$(SDK_UTIL);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>MSWindows;WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
@@ -233,7 +239,7 @@
     </Midl>
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\Headers;..\..\..\Headers\SP;..\..\..\Headers\Win;..\..\..\Resources;..\..\..\Util;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SDK_HEADERS);$(SDK_HEADERS)\SP;$(SDK_HEADERS)\Win;$(SDK_RESOURCES);$(SDK_UTIL);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
@@ -295,7 +301,7 @@
     </Midl>
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
-      <AdditionalIncludeDirectories>..\..\..\Headers;..\..\..\Headers\SP;..\..\..\Headers\Win;..\..\..\Resources;..\..\..\Util;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SDK_HEADERS);$(SDK_HEADERS)\SP;$(SDK_HEADERS)\Win;$(SDK_RESOURCES);$(SDK_UTIL);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
       <StructMemberAlignment>Default</StructMemberAlignment>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
@@ -351,13 +357,13 @@
       <Message Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">Compiling the PiPL</Message>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling the PiPL</Message>
       <Message Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">Compiling the PiPL</Message>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">cl /I "$(ProjectDir)..\..\..\Headers" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(ProjectDir)..\..\..\Resources\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">cl /I "$(SDK_HEADERS)" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(SDK_RESOURCES)\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
 </Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">cl /I "$(ProjectDir)..\..\..\Headers" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(ProjectDir)..\..\..\Resources\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">cl /I "$(SDK_HEADERS)" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(SDK_RESOURCES)\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
 </Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">cl /I "$(ProjectDir)..\..\..\Headers" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(ProjectDir)..\..\..\Resources\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">cl /I "$(SDK_HEADERS)" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(SDK_RESOURCES)\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
 </Command>
-      <Command Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">cl /I "$(ProjectDir)..\..\..\Headers" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(ProjectDir)..\..\..\Resources\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|ARM64'">cl /I "$(SDK_HEADERS)" /EP ".."\\"%(Filename).r" &gt; "$(IntDir)"\\"%(Filename).rr" || exit /b 1 &amp;&amp; "$(SDK_RESOURCES)\PiPLTool.exe" "$(IntDir)%(Filename).rr" "$(IntDir)%(Filename).rrc" || exit /b 1 &amp;&amp; cl /D "MSWindows" /EP "$(IntDir)%(Filename).rrc" &gt; "$(ProjectDir)"\\"%(Filename)".rc || exit /b 1
 </Command>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(ProjectDir)%(Filename).rc;%(Outputs)</Outputs>
       <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|ARM64'">$(ProjectDir)%(Filename).rc;%(Outputs)</Outputs>

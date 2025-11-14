@@ -623,10 +623,20 @@ jobs:
           $buildLogFile = Join-Path $projectDir "build.log"
           $buildOutputFile = Join-Path $projectDir "build_output.txt"
           
+          # Calculate SDK root from plugin dir (should be SDK_ROOT\Template\Ae_Stretch)
+          $calculatedSdkRoot = Split-Path (Split-Path $env:PLUGIN_DIR -Parent) -Parent
+          Write-Host "Calculated SDK Root: $calculatedSdkRoot"
+          Write-Host "Environment SDK Root: $env:SDK_ROOT"
+          
+          # Use environment SDK_ROOT if available, otherwise use calculated path
+          $sdkRootForBuild = if ($env:SDK_ROOT) { $env:SDK_ROOT } else { $calculatedSdkRoot }
+          Write-Host "Using SDK Root for build: $sdkRootForBuild"
+          
           # Capture both stdout and stderr to file and variable
           $buildOutput = & msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
+            /p:SDK_ROOT="$sdkRootForBuild" `
             /t:Build `
             /v:detailed `
             /m `
