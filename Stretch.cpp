@@ -207,6 +207,42 @@ static inline Pixel SampleBilinearClamped(const Pixel *pixels,
     return result;
 }
 
+template <typename Pixel>
+static inline bool PrepareWorldForAccess(const PF_EffectWorld *world,
+                                         int logical_height,
+                                         Pixel *&pixels_out,
+                                         int &row_pixels_out)
+{
+    if (!world || !world->data || logical_height <= 0)
+    {
+        return false;
+    }
+
+    const A_long rowbytes = world->rowbytes;
+    if (rowbytes == 0)
+    {
+        return false;
+    }
+
+    const A_long abs_rowbytes = (rowbytes >= 0) ? rowbytes : -rowbytes;
+    if (abs_rowbytes < static_cast<A_long>(sizeof(Pixel)))
+    {
+        return false;
+    }
+
+    row_pixels_out = static_cast<int>(abs_rowbytes / static_cast<A_long>(sizeof(Pixel)));
+
+    auto base = reinterpret_cast<A_u_char *>(world->data);
+    if (rowbytes < 0 && logical_height > 1)
+    {
+        const A_long offset = static_cast<A_long>(logical_height - 1) * rowbytes;
+        base += offset;
+    }
+
+    pixels_out = reinterpret_cast<Pixel *>(base);
+    return true;
+}
+
 // -----------------------------------------------------------------------------
 // Core stretch implementation (generic over pixel type)
 // -----------------------------------------------------------------------------
@@ -217,13 +253,27 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     PF_Err err = PF_Err_NONE;
 
     PF_EffectWorld *input = &params[0]->u.ld;
-    Pixel *input_pixels = reinterpret_cast<Pixel *>(input->data);
-    Pixel *output_pixels = reinterpret_cast<Pixel *>(output->data);
+    Pixel *input_pixels = nullptr;
+    Pixel *output_pixels = nullptr;
 
     const int width = output->width;
     const int height = output->height;
-    const int input_row_pixels = input->rowbytes / static_cast<int>(sizeof(Pixel));
-    const int output_row_pixels = output->rowbytes / static_cast<int>(sizeof(Pixel));
+    const int input_width = input->width;
+    const int input_height = input->height;
+
+    if (width <= 0 || height <= 0 || input_width <= 0 || input_height <= 0)
+    {
+        return PF_Err_NONE;
+    }
+
+    int input_row_pixels = 0;
+    int output_row_pixels = 0;
+
+    if (!PrepareWorldForAccess(input, input_height, input_pixels, input_row_pixels) ||
+        !PrepareWorldForAccess(output, height, output_pixels, output_row_pixels))
+    {
+        return PF_Err_BAD_CALLBACK_PARAM;
+    }
 
     const int anchor_x = (params[ANCHOR_POINT_ID]->u.td.x_value >> 16);
     const int anchor_y = (params[ANCHOR_POINT_ID]->u.td.y_value >> 16);
@@ -365,8 +415,8 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
                                                           input_row_pixels,
                                                           border_x_f,
                                                           border_y_f,
-                                                          width,
-                                                          height);
+                                                          input_width,
+                                                          input_height);
                 }
                 else
                 {
@@ -374,8 +424,8 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
                                                           input_row_pixels,
                                                           sample_x,
                                                           sample_y,
-                                                          width,
-                                                          height);
+                                                          input_width,
+                                                          input_height);
                 }
             }
 
@@ -395,6 +445,11 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
 static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
     PF_Err err = PF_Err_NONE;
+
+    if (output->width <= 0 || output->height <= 0)
+    {
+        return PF_Err_NONE;
+    }
 
     // Prefer explicit deep-color handling but keep logic simple and robust.
     if (output->world_flags & PF_WorldFlag_DEEP)
