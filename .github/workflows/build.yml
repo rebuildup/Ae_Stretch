@@ -645,7 +645,7 @@ jobs:
             /v:normal `
             /m `
             /nologo `
-            /clp:ShowTimestamp;Verbosity=normal `
+            "/clp:ShowTimestamp;Verbosity=normal" `
             2>&1
           
           # Capture exit code immediately after command execution
