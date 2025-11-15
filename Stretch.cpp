@@ -391,21 +391,21 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
 
                 if (use_border_pixel)
                 {
-                    *output_pixel = SampleBilinearClamped(input_base,
-                                                          input_rowbytes,
-                                                          border_x_f,
-                                                          border_y_f,
-                                                          input_width,
-                                                          input_height);
+                    *output_pixel = SampleBilinearClamped<Pixel>(input_base,
+                                                                 input_rowbytes,
+                                                                 border_x_f,
+                                                                 border_y_f,
+                                                                 input_width,
+                                                                 input_height);
                 }
                 else
                 {
-                    *output_pixel = SampleBilinearClamped(input_base,
-                                                          input_rowbytes,
-                                                          sample_x,
-                                                          sample_y,
-                                                          input_width,
-                                                          input_height);
+                    *output_pixel = SampleBilinearClamped<Pixel>(input_base,
+                                                                 input_rowbytes,
+                                                                 sample_x,
+                                                                 sample_y,
+                                                                 input_width,
+                                                                 input_height);
                 }
             }
 
