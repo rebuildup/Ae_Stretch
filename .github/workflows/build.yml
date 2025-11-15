@@ -643,13 +643,16 @@ jobs:
             /m `
             /nologo `
             "/clp:ShowTimestamp;Verbosity=normal;ErrorsOnly;WarningsOnly" `
-            2>&1 | Tee-Object -FilePath $buildOutputFile
+            2>&1
           
-          # Display all output
+          $buildExitCode = $LASTEXITCODE
+          
+          # Save output to file and display
+          $buildOutput | Out-File -FilePath $buildOutputFile -Encoding UTF8
           $buildOutput | ForEach-Object { Write-Host $_ }
           
           # Check exit code
-          if ($LASTEXITCODE -ne 0) {
+          if ($buildExitCode -ne 0) {
             Write-Host ""
             Write-Host "=== MSBuild failed, showing full detailed output ==="
             Write-Host ""
@@ -667,11 +670,12 @@ jobs:
             
             $detailedOutput | ForEach-Object { Write-Host $_ }
             $detailedOutput | Out-File -FilePath $buildOutputFile -Append -Encoding UTF8
+            $buildExitCode = $LASTEXITCODE
           }
           
-          if ($LASTEXITCODE -ne 0) {
+          if ($buildExitCode -ne 0) {
             Write-Host ""
-            Write-Host "::error::Build failed with exit code: $LASTEXITCODE"
+            Write-Host "::error::Build failed with exit code: $buildExitCode"
             Write-Host ""
             
             # Show build output file if it exists
