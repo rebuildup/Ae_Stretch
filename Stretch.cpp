@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 // -----------------------------------------------------------------------------
 // UI / boilerplate
@@ -90,6 +91,96 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
 #define M_PI 3.14159265358979323846
 #endif
 
+template <typename PixelT>
+struct PixelTraits;
+
+template <>
+struct PixelTraits<PF_Pixel>
+{
+    using ChannelType = A_u_char;
+    static inline float ToFloat(ChannelType v) { return static_cast<float>(v); }
+    static inline ChannelType FromFloat(float v)
+    {
+        v = std::clamp(v, 0.0f, 255.0f);
+        return static_cast<ChannelType>(v + 0.5f);
+    }
+};
+
+template <>
+struct PixelTraits<PF_Pixel16>
+{
+    using ChannelType = A_u_short;
+    static inline float ToFloat(ChannelType v) { return static_cast<float>(v); }
+    static inline ChannelType FromFloat(float v)
+    {
+        constexpr float max_val = static_cast<float>(std::numeric_limits<ChannelType>::max());
+        v = std::clamp(v, 0.0f, max_val);
+        return static_cast<ChannelType>(v + 0.5f);
+    }
+};
+
+template <>
+struct PixelTraits<PF_PixelFloat>
+{
+    using ChannelType = PF_FpShort;
+    static inline float ToFloat(ChannelType v) { return static_cast<float>(v); }
+    static inline ChannelType FromFloat(float v) { return static_cast<ChannelType>(v); }
+};
+
+template <typename Pixel>
+static inline Pixel SampleBilinearClamped(const Pixel *pixels,
+                                          int row_pixels,
+                                          float xf,
+                                          float yf,
+                                          int width,
+                                          int height)
+{
+    if (width <= 0 || height <= 0)
+    {
+        return Pixel{};
+    }
+
+    const float max_x = static_cast<float>(width - 1);
+    const float max_y = static_cast<float>(height - 1);
+    xf = std::clamp(xf, 0.0f, max_x);
+    yf = std::clamp(yf, 0.0f, max_y);
+
+    const int x0 = static_cast<int>(xf);
+    const int y0 = static_cast<int>(yf);
+    const int x1 = std::min(x0 + 1, width - 1);
+    const int y1 = std::min(y0 + 1, height - 1);
+
+    const float tx = xf - static_cast<float>(x0);
+    const float ty = yf - static_cast<float>(y0);
+
+    const Pixel *row0 = pixels + y0 * row_pixels;
+    const Pixel *row1 = pixels + y1 * row_pixels;
+
+    const Pixel &p00 = row0[x0];
+    const Pixel &p10 = row0[x1];
+    const Pixel &p01 = row1[x0];
+    const Pixel &p11 = row1[x1];
+
+    auto blend_channel = [&](auto Pixel::*member) -> typename PixelTraits<Pixel>::ChannelType {
+        const float c00 = PixelTraits<Pixel>::ToFloat(p00.*member);
+        const float c10 = PixelTraits<Pixel>::ToFloat(p10.*member);
+        const float c01 = PixelTraits<Pixel>::ToFloat(p01.*member);
+        const float c11 = PixelTraits<Pixel>::ToFloat(p11.*member);
+
+        const float c0 = c00 + (c10 - c00) * tx;
+        const float c1 = c01 + (c11 - c01) * tx;
+        return PixelTraits<Pixel>::FromFloat(c0 + (c1 - c0) * ty);
+    };
+
+    Pixel result{};
+    result.alpha = blend_channel(&Pixel::alpha);
+    result.red = blend_channel(&Pixel::red);
+    result.green = blend_channel(&Pixel::green);
+    result.blue = blend_channel(&Pixel::blue);
+
+    return result;
+}
+
 // -----------------------------------------------------------------------------
 // Core stretch implementation (generic over pixel type)
 // -----------------------------------------------------------------------------
@@ -152,6 +243,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
 
     const float shift_x = perpendicular_x * static_cast<float>(actual_shift);
     const float shift_y = perpendicular_y * static_cast<float>(actual_shift);
+    const float actual_shift_f = static_cast<float>(actual_shift);
 
     // For directional modes where half of the image is unchanged,
     // pre-fill output with input so early-outs are correct.
@@ -184,109 +276,80 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
 
             const float sd = signed_distance;
 
-            // Fast early-out for half-plane that remains unchanged.
-            if (!((direction == 2 && sd < 0.0f) || (direction == 3 && sd > 0.0f)))
+            const bool skip_forward = (direction == 2 && sd < 0.0f);
+            const bool skip_backward = (direction == 3 && sd > 0.0f);
+
+            if (!(skip_forward || skip_backward))
             {
-                int border_x = static_cast<int>(border_x_f);
-                int border_y = static_cast<int>(border_y_f);
+                const float x_f = static_cast<float>(x);
+                const float y_f = static_cast<float>(y);
 
-                if (border_x < 0)
-                {
-                    border_x = 0;
-                }
-                else if (border_x >= width)
-                {
-                    border_x = width - 1;
-                }
-
-                if (border_y < 0)
-                {
-                    border_y = 0;
-                }
-                else if (border_y >= height)
-                {
-                    border_y = height - 1;
-                }
-
-                Pixel *border_pixel = input_pixels + border_y * input_row_pixels + border_x;
-
-                int src_x = x;
-                int src_y = y;
                 bool use_border_pixel = false;
+                float sample_x = x_f;
+                float sample_y = y_f;
 
                 switch (direction)
                 {
                 case 1: // Both directions
-                    if (std::fabs(sd) < static_cast<float>(actual_shift))
+                default:
+                    if (std::fabs(sd) < actual_shift_f)
                     {
                         use_border_pixel = true;
                     }
                     else if (sd > 0.0f)
                     {
-                        src_x = static_cast<int>(static_cast<float>(x) - shift_x);
-                        src_y = static_cast<int>(static_cast<float>(y) - shift_y);
+                        sample_x = x_f - shift_x;
+                        sample_y = y_f - shift_y;
                     }
                     else
                     {
-                        src_x = static_cast<int>(static_cast<float>(x) + shift_x);
-                        src_y = static_cast<int>(static_cast<float>(y) + shift_y);
+                        sample_x = x_f + shift_x;
+                        sample_y = y_f + shift_y;
                     }
                     break;
 
                 case 2: // Forward direction
-                    if (sd >= 0.0f && sd < static_cast<float>(actual_shift))
+                    if (sd < actual_shift_f)
                     {
                         use_border_pixel = true;
                     }
-                    else if (sd >= static_cast<float>(actual_shift))
+                    else
                     {
-                        src_x = static_cast<int>(static_cast<float>(x) - shift_x);
-                        src_y = static_cast<int>(static_cast<float>(y) - shift_y);
+                        sample_x = x_f - shift_x;
+                        sample_y = y_f - shift_y;
                     }
                     break;
 
                 case 3: // Backward direction
-                    if (sd <= 0.0f && sd > -static_cast<float>(actual_shift))
+                    if (-sd < actual_shift_f)
                     {
                         use_border_pixel = true;
                     }
-                    else if (sd <= -static_cast<float>(actual_shift))
+                    else
                     {
-                        src_x = static_cast<int>(static_cast<float>(x) + shift_x);
-                        src_y = static_cast<int>(static_cast<float>(y) + shift_y);
+                        sample_x = x_f + shift_x;
+                        sample_y = y_f + shift_y;
                     }
-                    break;
-
-                default:
                     break;
                 }
 
                 if (use_border_pixel)
                 {
-                    *output_pixel = *border_pixel;
+                    *output_pixel = SampleBilinearClamped(input_pixels,
+                                                          input_row_pixels,
+                                                          border_x_f,
+                                                          border_y_f,
+                                                          width,
+                                                          height);
                 }
                 else
                 {
-                    if (src_x < 0)
-                    {
-                        src_x = 0;
-                    }
-                    else if (src_x >= width)
-                    {
-                        src_x = width - 1;
-                    }
-
-                    if (src_y < 0)
-                    {
-                        src_y = 0;
-                    }
-                    else if (src_y >= height)
-                    {
-                        src_y = height - 1;
-                    }
-
-                    Pixel *input_pixel = input_pixels + src_y * input_row_pixels + src_x;
-                    *output_pixel = *input_pixel;
+                    *output_pixel = SampleBilinearClamped(input_pixels,
+                                                          input_row_pixels,
+                                                          sample_x,
+                                                          sample_y,
+                                                          width,
+                                                          height);
                 }
             }
 
