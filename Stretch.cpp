@@ -142,14 +142,14 @@ struct PixelTraits<PF_PixelFloat>
 };
 
 template <typename Pixel>
-static inline Pixel SampleBilinearClamped(const Pixel *pixels,
-                                          int row_pixels,
+static inline Pixel SampleBilinearClamped(const A_u_char *base_ptr,
+                                          A_long rowbytes,
                                           float xf,
                                           float yf,
                                           int width,
                                           int height)
 {
-    if (width <= 0 || height <= 0)
+    if (!base_ptr || rowbytes == 0 || width <= 0 || height <= 0)
     {
         return Pixel{};
     }
@@ -167,8 +167,8 @@ static inline Pixel SampleBilinearClamped(const Pixel *pixels,
     const float tx = xf - static_cast<float>(x0);
     const float ty = yf - static_cast<float>(y0);
 
-    const Pixel *row0 = pixels + y0 * row_pixels;
-    const Pixel *row1 = pixels + y1 * row_pixels;
+    const Pixel *row0 = reinterpret_cast<const Pixel *>(base_ptr + static_cast<A_long>(y0) * rowbytes);
+    const Pixel *row1 = reinterpret_cast<const Pixel *>(base_ptr + static_cast<A_long>(y1) * rowbytes);
 
     const Pixel &p00 = row0[x0];
     const Pixel &p10 = row0[x1];
@@ -217,24 +217,43 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     PF_Err err = PF_Err_NONE;
 
     PF_EffectWorld *input = &params[0]->u.ld;
-    Pixel *input_pixels = reinterpret_cast<Pixel *>(input->data);
-    Pixel *output_pixels = reinterpret_cast<Pixel *>(output->data);
-
-    if (!input_pixels || !output_pixels)
-    {
-        return PF_Err_INTERNAL_STRUCT_DAMAGED;
-    }
 
     const int width = output->width;
     const int height = output->height;
+    const int input_width = input->width;
+    const int input_height = input->height;
 
     if (width <= 0 || height <= 0)
     {
         return PF_Err_NONE;
     }
 
-    const int input_row_pixels = input->rowbytes / static_cast<int>(sizeof(Pixel));
-    const int output_row_pixels = output->rowbytes / static_cast<int>(sizeof(Pixel));
+    if (!input || !input->data || !output || !output->data || input_width <= 0 || input_height <= 0)
+    {
+        return PF_Err_INTERNAL_STRUCT_DAMAGED;
+    }
+
+    const A_u_char *input_base = reinterpret_cast<const A_u_char *>(input->data);
+    A_u_char *output_base = reinterpret_cast<A_u_char *>(output->data);
+    A_long input_rowbytes = input->rowbytes;
+    A_long output_rowbytes = output->rowbytes;
+
+    if (input_rowbytes == 0 || output_rowbytes == 0)
+    {
+        return PF_Err_INTERNAL_STRUCT_DAMAGED;
+    }
+
+    if (input_rowbytes < 0)
+    {
+        input_base += static_cast<A_long>(input_height - 1) * input_rowbytes;
+        input_rowbytes = -input_rowbytes;
+    }
+
+    if (output_rowbytes < 0)
+    {
+        output_base += static_cast<A_long>(height - 1) * output_rowbytes;
+        output_rowbytes = -output_rowbytes;
+    }
 
     const int anchor_x = (params[ANCHOR_POINT_ID]->u.td.x_value >> 16);
     const int anchor_y = (params[ANCHOR_POINT_ID]->u.td.y_value >> 16);
@@ -292,7 +311,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     // Single-threaded scanline processing with per-row precomputation.
     for (int y = 0; y < height; ++y)
     {
-        Pixel *output_row = output_pixels + y * output_row_pixels;
+        Pixel *output_row = reinterpret_cast<Pixel *>(output_base + static_cast<A_long>(y) * output_rowbytes);
 
         const float rel_y = static_cast<float>(y - anchor_y);
         const float base_rel_x = static_cast<float>(-anchor_x);
@@ -372,21 +391,21 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
 
                 if (use_border_pixel)
                 {
-                    *output_pixel = SampleBilinearClamped(input_pixels,
-                                                          input_row_pixels,
+                    *output_pixel = SampleBilinearClamped(input_base,
+                                                          input_rowbytes,
                                                           border_x_f,
                                                           border_y_f,
-                                                          width,
-                                                          height);
+                                                          input_width,
+                                                          input_height);
                 }
                 else
                 {
-                    *output_pixel = SampleBilinearClamped(input_pixels,
-                                                          input_row_pixels,
+                    *output_pixel = SampleBilinearClamped(input_base,
+                                                          input_rowbytes,
                                                           sample_x,
                                                           sample_y,
-                                                          width,
-                                                          height);
+                                                          input_width,
+                                                          input_height);
                 }
             }
 
