@@ -91,6 +91,20 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
 #define M_PI 3.14159265358979323846
 #endif
 
+template <typename T>
+static inline T ClampScalar(T value, T min_value, T max_value)
+{
+    if (value < min_value)
+    {
+        return min_value;
+    }
+    if (value > max_value)
+    {
+        return max_value;
+    }
+    return value;
+}
+
 template <typename PixelT>
 struct PixelTraits;
 
@@ -101,7 +115,7 @@ struct PixelTraits<PF_Pixel>
     static inline float ToFloat(ChannelType v) { return static_cast<float>(v); }
     static inline ChannelType FromFloat(float v)
     {
-        v = std::clamp(v, 0.0f, 255.0f);
+        v = ClampScalar(v, 0.0f, 255.0f);
         return static_cast<ChannelType>(v + 0.5f);
     }
 };
@@ -114,7 +128,7 @@ struct PixelTraits<PF_Pixel16>
     static inline ChannelType FromFloat(float v)
     {
         constexpr float max_val = static_cast<float>(std::numeric_limits<ChannelType>::max());
-        v = std::clamp(v, 0.0f, max_val);
+        v = ClampScalar(v, 0.0f, max_val);
         return static_cast<ChannelType>(v + 0.5f);
     }
 };
@@ -142,8 +156,8 @@ static inline Pixel SampleBilinearClamped(const Pixel *pixels,
 
     const float max_x = static_cast<float>(width - 1);
     const float max_y = static_cast<float>(height - 1);
-    xf = std::clamp(xf, 0.0f, max_x);
-    yf = std::clamp(yf, 0.0f, max_y);
+    xf = ClampScalar(xf, 0.0f, max_x);
+    yf = ClampScalar(yf, 0.0f, max_y);
 
     const int x0 = static_cast<int>(xf);
     const int y0 = static_cast<int>(yf);
@@ -161,22 +175,34 @@ static inline Pixel SampleBilinearClamped(const Pixel *pixels,
     const Pixel &p01 = row1[x0];
     const Pixel &p11 = row1[x1];
 
-    auto blend_channel = [&](auto Pixel::*member) -> typename PixelTraits<Pixel>::ChannelType {
-        const float c00 = PixelTraits<Pixel>::ToFloat(p00.*member);
-        const float c10 = PixelTraits<Pixel>::ToFloat(p10.*member);
-        const float c01 = PixelTraits<Pixel>::ToFloat(p01.*member);
-        const float c11 = PixelTraits<Pixel>::ToFloat(p11.*member);
-
-        const float c0 = c00 + (c10 - c00) * tx;
-        const float c1 = c01 + (c11 - c01) * tx;
-        return PixelTraits<Pixel>::FromFloat(c0 + (c1 - c0) * ty);
+    auto blend = [&](float c00, float c10, float c01, float c11) {
+        const float first = c00 + (c10 - c00) * tx;
+        const float second = c01 + (c11 - c01) * tx;
+        return first + (second - first) * ty;
     };
 
     Pixel result{};
-    result.alpha = blend_channel(&Pixel::alpha);
-    result.red = blend_channel(&Pixel::red);
-    result.green = blend_channel(&Pixel::green);
-    result.blue = blend_channel(&Pixel::blue);
+    const float alpha = blend(PixelTraits<Pixel>::ToFloat(p00.alpha),
+                              PixelTraits<Pixel>::ToFloat(p10.alpha),
+                              PixelTraits<Pixel>::ToFloat(p01.alpha),
+                              PixelTraits<Pixel>::ToFloat(p11.alpha));
+    const float red = blend(PixelTraits<Pixel>::ToFloat(p00.red),
+                            PixelTraits<Pixel>::ToFloat(p10.red),
+                            PixelTraits<Pixel>::ToFloat(p01.red),
+                            PixelTraits<Pixel>::ToFloat(p11.red));
+    const float green = blend(PixelTraits<Pixel>::ToFloat(p00.green),
+                              PixelTraits<Pixel>::ToFloat(p10.green),
+                              PixelTraits<Pixel>::ToFloat(p01.green),
+                              PixelTraits<Pixel>::ToFloat(p11.green));
+    const float blue = blend(PixelTraits<Pixel>::ToFloat(p00.blue),
+                             PixelTraits<Pixel>::ToFloat(p10.blue),
+                             PixelTraits<Pixel>::ToFloat(p01.blue),
+                             PixelTraits<Pixel>::ToFloat(p11.blue));
+
+    result.alpha = PixelTraits<Pixel>::FromFloat(alpha);
+    result.red = PixelTraits<Pixel>::FromFloat(red);
+    result.green = PixelTraits<Pixel>::FromFloat(green);
+    result.blue = PixelTraits<Pixel>::FromFloat(blue);
 
     return result;
 }
