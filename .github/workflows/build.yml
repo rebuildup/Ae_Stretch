@@ -634,6 +634,9 @@ jobs:
           
           # Run MSBuild with output captured to both console and file
           Write-Host "Running MSBuild..."
+          
+          # Run MSBuild and capture output
+          # Note: We need to capture output first, then check exit code immediately
           $buildOutput = & msbuild Stretch.sln `
             /p:Configuration=Release `
             /p:Platform=x64 `
@@ -642,14 +645,19 @@ jobs:
             /v:normal `
             /m `
             /nologo `
-            "/clp:ShowTimestamp;Verbosity=normal;ErrorsOnly;WarningsOnly" `
+            /clp:ShowTimestamp;Verbosity=normal `
             2>&1
           
+          # Capture exit code immediately after command execution
           $buildExitCode = $LASTEXITCODE
           
           # Save output to file and display
           $buildOutput | Out-File -FilePath $buildOutputFile -Encoding UTF8
           $buildOutput | ForEach-Object { Write-Host $_ }
+          
+          Write-Host ""
+          Write-Host "MSBuild exit code: $buildExitCode"
+          Write-Host ""
           
           # Check exit code
           if ($buildExitCode -ne 0) {
@@ -668,9 +676,15 @@ jobs:
               /nologo `
               2>&1
             
+            # Capture exit code immediately
+            $buildExitCode = $LASTEXITCODE
+            
             $detailedOutput | ForEach-Object { Write-Host $_ }
             $detailedOutput | Out-File -FilePath $buildOutputFile -Append -Encoding UTF8
-            $buildExitCode = $LASTEXITCODE
+            
+            Write-Host ""
+            Write-Host "Detailed MSBuild exit code: $buildExitCode"
+            Write-Host ""
           }
           
           if ($buildExitCode -ne 0) {
@@ -680,18 +694,31 @@ jobs:
             
             # Show build output file if it exists
             if (Test-Path $buildOutputFile) {
-              Write-Host "=== Build output file (last 300 lines) ==="
+              Write-Host "=== Build output file (full content) ==="
               $outputLines = Get-Content $buildOutputFile
               if ($outputLines) {
-                $outputLines | Select-Object -Last 300 | ForEach-Object { Write-Host $_ }
+                $outputLines | ForEach-Object { Write-Host $_ }
+              } else {
+                Write-Host "  (file is empty)"
               }
+              Write-Host ""
+            } else {
+              Write-Host "=== Build output file not found: $buildOutputFile ==="
               Write-Host ""
             }
             
             # Show build log file if it exists
             if (Test-Path $buildLogFile) {
-              Write-Host "=== Build log file (last 300 lines) ==="
-              Get-Content $buildLogFile -Tail 300 | ForEach-Object { Write-Host $_ }
+              Write-Host "=== Build log file (full content) ==="
+              $logLines = Get-Content $buildLogFile
+              if ($logLines) {
+                $logLines | ForEach-Object { Write-Host $_ }
+              } else {
+                Write-Host "  (file is empty)"
+              }
+              Write-Host ""
+            } else {
+              Write-Host "=== Build log file not found: $buildLogFile ==="
               Write-Host ""
             }
             
