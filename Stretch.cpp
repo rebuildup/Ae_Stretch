@@ -553,7 +553,7 @@ static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *para
 // Entry points
 // -----------------------------------------------------------------------------
 
-extern "C" DllExport
+extern "C" STRETCH_API
     PF_Err
     PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
                              PF_PluginDataCB2 inPluginDataCallBackPtr,
@@ -576,7 +576,7 @@ extern "C" DllExport
     return result;
 }
 
-extern "C" DllExport
+extern "C" STRETCH_API
     PF_Err
     EffectMain(PF_Cmd cmd,
                PF_InData *in_data,
