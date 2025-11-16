@@ -26,12 +26,6 @@
 #endif
 #endif
 
-#if defined(_WIN32)
-#define STRETCH_API __declspec(dllexport)
-#else
-#define STRETCH_API
-#endif
-
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 1
 #define BUG_VERSION 0
@@ -63,7 +57,7 @@ extern "C"
 {
 #endif
 
-    STRETCH_API PF_Err
+    PF_Err
     PluginDataEntryFunction2(
         PF_PluginDataPtr inPtr,
         PF_PluginDataCB2 inPluginDataCallBackPtr,
@@ -71,7 +65,7 @@ extern "C"
         const char *inHostName,
         const char *inHostVersion);
 
-    STRETCH_API PF_Err
+    PF_Err
     EffectMain(
         PF_Cmd cmd,
         PF_InData *in_data,
