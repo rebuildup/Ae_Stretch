@@ -57,7 +57,6 @@ extern "C"
 {
 #endif
 
-    __declspec(dllexport)
     PF_Err
     PluginDataEntryFunction2(
         PF_PluginDataPtr inPtr,
@@ -66,7 +65,6 @@ extern "C"
         const char *inHostName,
         const char *inHostVersion);
 
-    __declspec(dllexport)
     PF_Err
     EffectMain(
         PF_Cmd cmd,

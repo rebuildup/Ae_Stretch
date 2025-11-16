@@ -546,8 +546,15 @@ jobs:
           # Find build artifact
           echo "Searching for build artifact..."
           PLUGIN_PATH=""
-          
-          for search_path in "build/Stretch.plugin" "build/Debug/Stretch.plugin" "build/Release/Stretch.plugin"; do
+
+          # Try common locations for both legacy and new product names
+          for search_path in \
+            "build/stretch_v2.plugin" \
+            "build/Stretch.plugin" \
+            "build/Debug/stretch_v2.plugin" \
+            "build/Debug/Stretch.plugin" \
+            "build/Release/stretch_v2.plugin" \
+            "build/Release/Stretch.plugin"; do
             if [ -d "$search_path" ]; then
               PLUGIN_PATH="$search_path"
               break
@@ -555,13 +562,14 @@ jobs:
           done
           
           if [ -z "$PLUGIN_PATH" ]; then
-            PLUGIN_PATH=$(find build -name "Stretch.plugin" -type d 2>/dev/null | head -1)
+            PLUGIN_PATH=$(find build -type d \( -name "stretch_v2.plugin" -o -name "Stretch.plugin" \) 2>/dev/null | head -1)
           fi
           
           if [ -n "$PLUGIN_PATH" ]; then
             mkdir -p "${{ github.workspace }}/artifacts"
             cp -R "$PLUGIN_PATH" "${{ github.workspace }}/artifacts/"
-            echo "Artifact copied: artifacts/Stretch.plugin"
+            artifact_name=$(basename "$PLUGIN_PATH")
+            echo "Artifact copied: artifacts/$artifact_name"
           else
             echo "::error::Build artifact not found"
             echo "Build directory contents:"
@@ -830,6 +838,10 @@ jobs:
           Write-Host "Searching for build artifact..."
           
           $searchPaths = @(
+            "..\output\stretch_v2.aex",
+            "x64\Release\stretch_v2.aex",
+            "Release\stretch_v2.aex",
+            ".\stretch_v2.aex",
             "x64\Release\Stretch.aex",
             "..\output\Stretch.aex",
             "Release\Stretch.aex",
@@ -845,14 +857,15 @@ jobs:
           }
           
           if (-not $aexPath) {
-            $aexPath = Get-ChildItem -Path . -Filter "Stretch.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $aexPath = Get-ChildItem -Path . -Filter "*.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           }
           
           if ($aexPath) {
             $artifactsDir = "${{ github.workspace }}\artifacts"
             New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
-            Copy-Item -Path $aexPath.FullName -Destination $artifactsDir -Force
-            Write-Host "Artifact copied: $artifactsDir\Stretch.aex"
+            $destPath = Join-Path $artifactsDir "stretch_v2.aex"
+            Copy-Item -Path $aexPath.FullName -Destination $destPath -Force
+            Write-Host "Artifact copied: $destPath"
           } else {
             Write-Host "Error: Build artifact not found"
             Get-ChildItem -Recurse -Depth 3 | Where-Object { $_.Extension -eq ".aex" -or $_.Name -like "*.obj" } | Select-Object FullName | Format-Table -AutoSize
@@ -868,7 +881,7 @@ jobs:
             exit 1
           }
           $dumpbinPath = $dumpbinCmd.Source
-          $artifactPath = Join-Path "${{ github.workspace }}" "artifacts\Stretch.aex"
+          $artifactPath = Join-Path "${{ github.workspace }}" "artifacts\stretch_v2.aex"
           if (-not (Test-Path $artifactPath)) {
             Write-Host "::error::Artifact not found at $artifactPath"
             exit 1
@@ -891,4 +904,3 @@ jobs:
           path: artifacts/
           retention-days: 30
           if-no-files-found: error
-
