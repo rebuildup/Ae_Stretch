@@ -26,6 +26,14 @@
 #endif
 #endif
 
+#ifndef DllExport
+#if defined(_WIN32)
+#define DllExport __declspec(dllexport)
+#else
+#define DllExport
+#endif
+#endif
+
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 1
 #define BUG_VERSION 0
@@ -57,7 +65,7 @@ extern "C"
 {
 #endif
 
-    PF_Err
+    DllExport PF_Err
     PluginDataEntryFunction2(
         PF_PluginDataPtr inPtr,
         PF_PluginDataCB2 inPluginDataCallBackPtr,
@@ -65,7 +73,7 @@ extern "C"
         const char *inHostName,
         const char *inHostVersion);
 
-    PF_Err
+    DllExport PF_Err
     EffectMain(
         PF_Cmd cmd,
         PF_InData *in_data,
