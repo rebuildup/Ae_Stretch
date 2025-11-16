@@ -175,7 +175,8 @@ static inline Pixel SampleBilinearClamped(const A_u_char *base_ptr,
     const Pixel &p01 = row1[x0];
     const Pixel &p11 = row1[x1];
 
-    auto blend = [&](float c00, float c10, float c01, float c11) {
+    auto blend = [&](float c00, float c10, float c01, float c11)
+    {
         const float first = c00 + (c10 - c00) * tx;
         const float second = c01 + (c11 - c01) * tx;
         return first + (second - first) * ty;
@@ -302,13 +303,15 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     const float actual_shift_f = static_cast<float>(actual_shift);
 
     // For directional modes where half of the image is unchanged,
-    // pre-fill output with input so early-outs are correct.
+    // pre-fill output with input so early-outs (skipped pixels) are correct.
     if (direction == 2 || direction == 3)
     {
         PF_COPY(input, output, NULL, NULL);
     }
 
     // Single-threaded scanline processing with per-row precomputation.
+    // For Forward / Backward directions, we also trim the X range to the
+    // actually affected half-plane to reduce per-pixel work.
     for (int y = 0; y < height; ++y)
     {
         Pixel *output_row = reinterpret_cast<Pixel *>(output_base + static_cast<A_long>(y) * output_rowbytes);
@@ -316,102 +319,187 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
         const float rel_y = static_cast<float>(y - anchor_y);
         const float base_rel_x = static_cast<float>(-anchor_x);
 
-        float signed_distance = base_rel_x * perpendicular_x + rel_y * perpendicular_y;
-
+        const float row_signed_base = base_rel_x * perpendicular_x + rel_y * perpendicular_y;
         const float par_base = base_rel_x * parallel_x + rel_y * parallel_y;
-        float border_x_f = static_cast<float>(anchor_x) + par_base * parallel_x;
-        float border_y_f = static_cast<float>(anchor_y) + par_base * parallel_y;
+        const float border_x_row_base = static_cast<float>(anchor_x) + par_base * parallel_x;
+        const float border_y_row_base = static_cast<float>(anchor_y) + par_base * parallel_y;
 
         const float signed_step = perpendicular_x;
         const float border_x_step = parallel_x * parallel_x;
         const float border_y_step = parallel_x * parallel_y;
 
-        for (int x = 0; x < width; ++x)
+        int x_start = 0;
+        int x_end = width;
+
+        if (direction == 2 || direction == 3)
+        {
+            // Restrict processing to the half-plane that actually changes.
+            // signed_distance(x) = row_signed_base + x * signed_step
+            if (signed_step == 0.0f)
+            {
+                // Distance is constant across the row.
+                const float sd_row = row_signed_base;
+
+                if ((direction == 2 && sd_row < 0.0f) ||
+                    (direction == 3 && sd_row > 0.0f))
+                {
+                    // Entire row is skipped (already copied).
+                    continue;
+                }
+                // Otherwise, whole row is affected: keep [0, width).
+            }
+            else if (direction == 2)
+            {
+                // Forward: we modify pixels with sd >= 0.
+                if (signed_step > 0.0f)
+                {
+                    const float x_boundary = (-row_signed_base) / signed_step;
+                    x_start = static_cast<int>(std::ceil(x_boundary));
+                    if (x_start < 0)
+                    {
+                        x_start = 0;
+                    }
+                    else if (x_start >= width)
+                    {
+                        // No pixels in this row are affected.
+                        continue;
+                    }
+                }
+                else // signed_step < 0.0f
+                {
+                    const float x_boundary = (-row_signed_base) / signed_step;
+                    int x_last = static_cast<int>(std::floor(x_boundary));
+                    x_start = 0;
+                    x_end = x_last + 1;
+                    if (x_end <= 0)
+                    {
+                        continue;
+                    }
+                    if (x_end > width)
+                    {
+                        x_end = width;
+                    }
+                }
+            }
+            else if (direction == 3)
+            {
+                // Backward: we modify pixels with sd <= 0.
+                if (signed_step > 0.0f)
+                {
+                    const float x_boundary = (-row_signed_base) / signed_step;
+                    int x_last = static_cast<int>(std::floor(x_boundary));
+                    x_start = 0;
+                    x_end = x_last + 1;
+                    if (x_end <= 0)
+                    {
+                        continue;
+                    }
+                    if (x_end > width)
+                    {
+                        x_end = width;
+                    }
+                }
+                else // signed_step < 0.0f
+                {
+                    const float x_boundary = (-row_signed_base) / signed_step;
+                    x_start = static_cast<int>(std::ceil(x_boundary));
+                    if (x_start < 0)
+                    {
+                        x_start = 0;
+                    }
+                    else if (x_start >= width)
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        float signed_distance = row_signed_base + signed_step * static_cast<float>(x_start);
+        float border_x_f = border_x_row_base + border_x_step * static_cast<float>(x_start);
+        float border_y_f = border_y_row_base + border_y_step * static_cast<float>(x_start);
+
+        float x_f = static_cast<float>(x_start);
+        const float y_f = static_cast<float>(y);
+
+        for (int x = x_start; x < x_end; ++x)
         {
             Pixel *output_pixel = output_row + x;
 
             const float sd = signed_distance;
 
-            const bool skip_forward = (direction == 2 && sd < 0.0f);
-            const bool skip_backward = (direction == 3 && sd > 0.0f);
+            bool use_border_pixel = false;
+            float sample_x = x_f;
+            float sample_y = y_f;
 
-            if (!(skip_forward || skip_backward))
+            switch (direction)
             {
-                const float x_f = static_cast<float>(x);
-                const float y_f = static_cast<float>(y);
-
-                bool use_border_pixel = false;
-                float sample_x = x_f;
-                float sample_y = y_f;
-
-                switch (direction)
+            case 1: // Both directions
+            default:
+                if (std::fabs(sd) < actual_shift_f)
                 {
-                case 1: // Both directions
-                default:
-                    if (std::fabs(sd) < actual_shift_f)
-                    {
-                        use_border_pixel = true;
-                    }
-                    else if (sd > 0.0f)
-                    {
-                        sample_x = x_f - shift_x;
-                        sample_y = y_f - shift_y;
-                    }
-                    else
-                    {
-                        sample_x = x_f + shift_x;
-                        sample_y = y_f + shift_y;
-                    }
-                    break;
-
-                case 2: // Forward direction
-                    if (sd < actual_shift_f)
-                    {
-                        use_border_pixel = true;
-                    }
-                    else
-                    {
-                        sample_x = x_f - shift_x;
-                        sample_y = y_f - shift_y;
-                    }
-                    break;
-
-                case 3: // Backward direction
-                    if (-sd < actual_shift_f)
-                    {
-                        use_border_pixel = true;
-                    }
-                    else
-                    {
-                        sample_x = x_f + shift_x;
-                        sample_y = y_f + shift_y;
-                    }
-                    break;
+                    use_border_pixel = true;
                 }
-
-                if (use_border_pixel)
+                else if (sd > 0.0f)
                 {
-                    *output_pixel = SampleBilinearClamped<Pixel>(input_base,
-                                                                 input_rowbytes,
-                                                                 border_x_f,
-                                                                 border_y_f,
-                                                                 input_width,
-                                                                 input_height);
+                    sample_x = x_f - shift_x;
+                    sample_y = y_f - shift_y;
                 }
                 else
                 {
-                    *output_pixel = SampleBilinearClamped<Pixel>(input_base,
-                                                                 input_rowbytes,
-                                                                 sample_x,
-                                                                 sample_y,
-                                                                 input_width,
-                                                                 input_height);
+                    sample_x = x_f + shift_x;
+                    sample_y = y_f + shift_y;
                 }
+                break;
+
+            case 2: // Forward direction
+                if (sd < actual_shift_f)
+                {
+                    use_border_pixel = true;
+                }
+                else
+                {
+                    sample_x = x_f - shift_x;
+                    sample_y = y_f - shift_y;
+                }
+                break;
+
+            case 3: // Backward direction
+                if (-sd < actual_shift_f)
+                {
+                    use_border_pixel = true;
+                }
+                else
+                {
+                    sample_x = x_f + shift_x;
+                    sample_y = y_f + shift_y;
+                }
+                break;
+            }
+
+            if (use_border_pixel)
+            {
+                *output_pixel = SampleBilinearClamped<Pixel>(input_base,
+                                                             input_rowbytes,
+                                                             border_x_f,
+                                                             border_y_f,
+                                                             input_width,
+                                                             input_height);
+            }
+            else
+            {
+                *output_pixel = SampleBilinearClamped<Pixel>(input_base,
+                                                             input_rowbytes,
+                                                             sample_x,
+                                                             sample_y,
+                                                             input_width,
+                                                             input_height);
             }
 
             signed_distance += signed_step;
             border_x_f += border_x_step;
             border_y_f += border_y_step;
+            x_f += 1.0f;
         }
     }
 
@@ -466,20 +554,20 @@ static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *para
 // -----------------------------------------------------------------------------
 
 extern "C" DllExport
-PF_Err
-PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
-                         PF_PluginDataCB2 inPluginDataCallBackPtr,
-                         SPBasicSuite *inSPBasicSuitePtr,
-                         const char *inHostName,
-                         const char *inHostVersion)
+    PF_Err
+    PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
+                             PF_PluginDataCB2 inPluginDataCallBackPtr,
+                             SPBasicSuite *inSPBasicSuitePtr,
+                             const char *inHostName,
+                             const char *inHostVersion)
 {
     PF_Err result = PF_Err_INVALID_CALLBACK;
 
     result = PF_REGISTER_EFFECT_EXT2(
         inPtr,
         inPluginDataCallBackPtr,
-        "Stretch_v2",                 // Name
-        "361do Stretch_v2",           // Match Name
+        "stretch_v2",                 // Name
+        "361do stretch_v2",           // Match Name
         "361do_plugins",              // Category
         AE_RESERVED_INFO,             // Reserved Info
         "EffectMain",                 // Entry point
@@ -489,13 +577,13 @@ PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
 }
 
 extern "C" DllExport
-PF_Err
-EffectMain(PF_Cmd cmd,
-           PF_InData *in_data,
-           PF_OutData *out_data,
-           PF_ParamDef *params[],
-           PF_LayerDef *output,
-           void *extra)
+    PF_Err
+    EffectMain(PF_Cmd cmd,
+               PF_InData *in_data,
+               PF_OutData *out_data,
+               PF_ParamDef *params[],
+               PF_LayerDef *output,
+               void *extra)
 {
     PF_Err err = PF_Err_NONE;
 

@@ -12,7 +12,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		Name {
-			"Stretch_v2"
+			"stretch_v2"
 		},
 		
 		Category {
@@ -56,7 +56,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		AE_Effect_Match_Name {
-			"361do Stretch_v2"
+			"361do stretch_v2"
 		},
 		
 		AE_Reserved_Info {
