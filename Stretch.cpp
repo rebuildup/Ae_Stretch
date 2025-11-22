@@ -11,6 +11,11 @@
 static PF_Err
 About(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    if (!out_data)
+    {
+        return PF_Err_INTERNAL_STRUCT_DAMAGED;
+    }
+
     if (in_data && in_data->pica_basicP)
     {
         AEGP_SuiteHandler suites(in_data->pica_basicP);
@@ -38,6 +43,11 @@ About(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerD
 static PF_Err
 GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    if (!out_data)
+    {
+        return PF_Err_INTERNAL_STRUCT_DAMAGED;
+    }
+
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
     out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE;
     out_data->out_flags2 |= PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
@@ -47,11 +57,18 @@ GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_
 static PF_Err
 FrameSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)in_data;
+    (void)out_data;
+    (void)params;
+    (void)output;
     return PF_Err_NONE;
 }
 
 static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)in_data;
+    (void)output;
+
     PF_Err err = PF_Err_NONE;
     PF_ParamDef def;
 
@@ -215,7 +232,14 @@ static inline Pixel SampleBilinearClamped(const A_u_char *base_ptr,
 template <typename Pixel>
 static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)out_data;
+
     PF_Err err = PF_Err_NONE;
+
+    if (!in_data || !params || !params[0] || !output)
+    {
+        return PF_Err_INTERNAL_STRUCT_DAMAGED;
+    }
 
     PF_EffectWorld *input = &params[0]->u.ld;
 
@@ -514,6 +538,11 @@ static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *para
 {
     PF_Err err = PF_Err_NONE;
 
+    if (!in_data || !out_data || !params || !params[0] || !output)
+    {
+        return PF_Err_INTERNAL_STRUCT_DAMAGED;
+    }
+
     if (output->width <= 0 || output->height <= 0)
     {
         return PF_Err_NONE;
@@ -587,30 +616,41 @@ extern "C" DllExport
 {
     PF_Err err = PF_Err_NONE;
 
-    switch (cmd)
+    try
     {
-    case PF_Cmd_ABOUT:
-        err = About(in_data, out_data, params, output);
-        break;
+        switch (cmd)
+        {
+        case PF_Cmd_ABOUT:
+            err = About(in_data, out_data, params, output);
+            break;
 
-    case PF_Cmd_GLOBAL_SETUP:
-        err = GlobalSetup(in_data, out_data, params, output);
-        break;
+        case PF_Cmd_GLOBAL_SETUP:
+            err = GlobalSetup(in_data, out_data, params, output);
+            break;
 
-    case PF_Cmd_PARAMS_SETUP:
-        err = ParamsSetup(in_data, out_data, params, output);
-        break;
+        case PF_Cmd_PARAMS_SETUP:
+            err = ParamsSetup(in_data, out_data, params, output);
+            break;
 
-    case PF_Cmd_FRAME_SETUP:
-        err = FrameSetup(in_data, out_data, params, output);
-        break;
+        case PF_Cmd_FRAME_SETUP:
+            err = FrameSetup(in_data, out_data, params, output);
+            break;
 
-    case PF_Cmd_RENDER:
-        err = Render(in_data, out_data, params, output);
-        break;
+        case PF_Cmd_RENDER:
+            err = Render(in_data, out_data, params, output);
+            break;
 
-    default:
-        break;
+        default:
+            break;
+        }
+    }
+    catch (const PF_Err &thrown_err)
+    {
+        err = thrown_err;
+    }
+    catch (...)
+    {
+        err = PF_Err_INTERNAL_STRUCT_DAMAGED;
     }
 
     return err;
