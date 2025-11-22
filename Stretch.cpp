@@ -586,6 +586,29 @@ static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *para
 
 extern "C" DllExport
     PF_Err
+    PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
+                             PF_PluginDataCB2 inPluginDataCallBackPtr,
+                             SPBasicSuite *inSPBasicSuitePtr,
+                             const char *inHostName,
+                             const char *inHostVersion)
+{
+    PF_Err result = PF_Err_INVALID_CALLBACK;
+
+    result = PF_REGISTER_EFFECT_EXT2(
+        inPtr,
+        inPluginDataCallBackPtr,
+        "stretch_v2",                 // Name
+        "361do stretch_v2",           // Match Name
+        "361do_plugins",              // Category
+        AE_RESERVED_INFO,             // Reserved Info
+        "EffectMain",                 // Entry point
+        "https://x.com/361do_sleep"); // support URL
+
+    return result;
+}
+
+extern "C" DllExport
+    PF_Err
     EffectMain(PF_Cmd cmd,
                PF_InData *in_data,
                PF_OutData *out_data,

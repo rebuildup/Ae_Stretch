@@ -66,6 +66,14 @@ extern "C"
 #endif
 
     DllExport PF_Err
+    PluginDataEntryFunction2(
+        PF_PluginDataPtr inPtr,
+        PF_PluginDataCB2 inPluginDataCallBackPtr,
+        SPBasicSuite *inSPBasicSuitePtr,
+        const char *inHostName,
+        const char *inHostVersion);
+
+    DllExport PF_Err
     EffectMain(
         PF_Cmd cmd,
         PF_InData *in_data,
