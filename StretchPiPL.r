@@ -48,11 +48,11 @@ resource 'PiPL' (16000) {
 		},
 		
 		AE_Effect_Global_OutFlags {
-			0x02000000 //50332160
+			0x2000 // PF_OutFlag_DEEP_COLOR_AWARE
 		},
 		
 		AE_Effect_Global_OutFlags_2 {
-			0x08000000 // PF_OutFlag2_SUPPORTS_THREADED_RENDERING
+			0x20 // PF_OutFlag2_SUPPORTS_THREADED_RENDERING
 		},
 		
 		AE_Effect_Match_Name {
