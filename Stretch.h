@@ -59,28 +59,6 @@ enum
     DIRECTION_ID,
     STRETCH_NUM_PARAMS
 };
-#define STAGE_VERSION PF_Stage_DEVELOP
-#define BUILD_VERSION 1
-#define NAME "stretch_v2"
-#define DESCRIPTION "Stretches pixels based on an anchor point and angle"
-
-// String IDs
-enum
-{
-    StrID_NONE = 0,
-    StrID_Name,
-    StrID_Description,
-    StrID_NUMTYPES
-};
-
-enum
-{
-    ANCHOR_POINT_ID = 1,
-    ANGLE_ID,
-    SHIFT_AMOUNT_ID,
-    DIRECTION_ID,
-    STRETCH_NUM_PARAMS
-};
 
 #ifdef __cplusplus
 extern "C"
@@ -90,6 +68,8 @@ extern "C"
     DllExport PF_Err
     EffectMain(
         PF_Cmd cmd,
+        PF_InData *in_data,
+        PF_OutData *out_data,
         PF_ParamDef *params[],
         PF_LayerDef *output,
         void *extra);
