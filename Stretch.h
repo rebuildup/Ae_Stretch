@@ -55,12 +55,21 @@ enum
 enum
 {
     STRETCH_INPUT = 0,
-    STRETCH_TYPE,
-    STRETCH_VALUE,
+    STRETCH_ANCHOR_POINT,
+    STRETCH_ANGLE,
+    STRETCH_SHIFT_AMOUNT,
     STRETCH_DIRECTION,
-    STRETCH_INTERPOLATION,
     STRETCH_NUM_PARAMS
 };
+
+enum
+{
+    ANCHOR_POINT_ID = 1,
+    ANGLE_ID,
+    SHIFT_AMOUNT_ID,
+    DIRECTION_ID
+};
+
 
 #ifdef __cplusplus
 extern "C"
