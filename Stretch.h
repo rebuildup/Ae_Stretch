@@ -16,7 +16,6 @@
 #include "AE_EffectCBSuites.h"
 #include "String_Utils.h"
 #include "AE_GeneralPlug.h"
-#include "AE_SmartRender.h"
 #include "AEGP_SuiteHandler.h"
 #include <cmath>
 
@@ -25,6 +24,21 @@
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+#endif
+
+// Define Smart Render structs if missing
+#ifndef PF_SmartRenderExtra
+typedef struct PF_SmartRenderCallbacks {
+    PF_Err (*checkout_layer_pixels)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_EffectWorld **pixels);
+    PF_Err (*checkout_output)(PF_ProgPtr effect_ref, PF_EffectWorld **output);
+    PF_Err (*checkin_layer_pixels)(PF_ProgPtr effect_ref, PF_ParamIndex index);
+    PF_Err (*is_layer_pixel_data_valid)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_Boolean *valid);
+} PF_SmartRenderCallbacks;
+
+typedef struct PF_SmartRenderExtra {
+    PF_SmartRenderCallbacks *cb;
+    void *unused;
+} PF_SmartRenderExtra;
 #endif
 
 #ifndef DllExport
