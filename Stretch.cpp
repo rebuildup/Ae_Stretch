@@ -77,6 +77,13 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
     return PF_Err_NONE;
 }
 
+static void UnionLRect(const PF_LRect* src, PF_LRect* dst) {
+    if (src->left < dst->left) dst->left = src->left;
+    if (src->top < dst->top) dst->top = src->top;
+    if (src->right > dst->right) dst->right = src->right;
+    if (src->bottom > dst->bottom) dst->bottom = src->bottom;
+}
+
 static PF_Err
 PreRender(
     PF_InData* in_data,
@@ -118,7 +125,7 @@ SmartRender(
     PF_WorldSuite2* wsP = NULL;
 
     // Get World Suite
-    ERR(AEFX_AcquireSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, "PFWorldSuite", (void**)&wsP));
+    ERR(in_data->pica_basicP->AcquireSuite(kPFWorldSuite, kPFWorldSuiteVersion2, (const void**)&wsP));
 
     if (!err) {
         // Checkout input/output
@@ -127,7 +134,7 @@ SmartRender(
     }
 
     if (!err && input_world && output_world) {
-        // Fix:
+        // Checkout parameters
         PF_ParamDef p[STRETCH_NUM_PARAMS];
         PF_ParamDef* pp[STRETCH_NUM_PARAMS];
         
@@ -138,7 +145,7 @@ SmartRender(
 
         // Params
         for (int i = 1; i < STRETCH_NUM_PARAMS; ++i) {
-            PF_Checkout_Param(in_data, i, in_data->current_time, in_data->time_step, in_data->time_scale, &p[i]);
+            PF_Checkout_Value(in_data, out_data, i, in_data->current_time, in_data->time_step, in_data->time_scale, &p[i]);
             pp[i] = &p[i];
         }
 
@@ -155,11 +162,11 @@ SmartRender(
         
         // Checkin params
         for (int i = 1; i < STRETCH_NUM_PARAMS; ++i) {
-            PF_Checkin_Param(in_data, i, &p[i]);
+            PF_Checkin_Param(in_data, out_data, i, &p[i]);
         }
     }
     
-    if (wsP) AEFX_ReleaseSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, "PFWorldSuite");
+    if (wsP) in_data->pica_basicP->ReleaseSuite(kPFWorldSuite, kPFWorldSuiteVersion2);
 
     return err;
 }
