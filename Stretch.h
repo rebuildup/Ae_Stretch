@@ -16,6 +16,7 @@
 #include "AE_EffectCBSuites.h"
 #include "String_Utils.h"
 #include "AE_GeneralPlug.h"
+#include "AE_SmartRender.h"
 #include "AEGP_SuiteHandler.h"
 #include <cmath>
 
