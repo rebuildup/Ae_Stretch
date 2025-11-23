@@ -309,7 +309,7 @@
 				INFOPLIST_FILE = "Stretch.plugin-Info.plist";
 				INSTALL_PATH = "$(HOME)/Library/Bundles";
 				PRODUCT_BUNDLE_IDENTIFIER = com.adobe.AfterEffects.Stretch;
-				PRODUCT_NAME = stretch_v2;
+				PRODUCT_NAME = Stretch;
 				SDKROOT = macosx;
 				ZERO_LINK = NO;
 			};
