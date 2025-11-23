@@ -4,8 +4,6 @@
 #include <cmath>
 #include <limits>
 #include <vector>
-#include <thread>
-#include <atomic>
 
 // -----------------------------------------------------------------------------
 // UI / boilerplate
@@ -248,18 +246,14 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     const float para_x = cs;
     const float para_y = sn;
 
-    // Multi-threading
-    const int num_threads = std::max(1u, std::thread::hardware_concurrency());
-    std::vector<std::thread> threads;
-
-    auto process_rows = [&](int start_y, int end_y) {
-        for (int y = start_y; y < end_y; ++y) {
-            Pixel *out_row = reinterpret_cast<Pixel *>(output_base + y * output_rowbytes);
-            
-            // Precompute row constants
-            const float dy = static_cast<float>(y - anchor_y);
-            
-            for (int x = 0; x < width; ++x) {
+    // Process all rows
+    for (int y = 0; y < height; ++y) {
+        Pixel *out_row = reinterpret_cast<Pixel *>(output_base + y * output_rowbytes);
+        
+        // Precompute row constants
+        const float dy = static_cast<float>(y - anchor_y);
+        
+        for (int x = 0; x < width; ++x) {
                 const float dx = static_cast<float>(x - anchor_x);
                 
                 // Calculate signed distance from the line passing through anchor point
@@ -349,19 +343,6 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
                 }
             }
         }
-    };
-
-    int rows_per_thread = (height + num_threads - 1) / num_threads;
-    for (int i = 0; i < num_threads; ++i) {
-        int start = i * rows_per_thread;
-        int end = std::min(start + rows_per_thread, height);
-        if (start < end) {
-            threads.emplace_back(process_rows, start, end);
-        }
-    }
-
-    for (auto &t : threads) {
-        if (t.joinable()) t.join();
     }
 
     return PF_Err_NONE;
@@ -430,6 +411,13 @@ PF_Err EffectMain(PF_Cmd cmd,
             case PF_Cmd_ABOUT: err = About(in_data, out_data, params, output); break;
             case PF_Cmd_GLOBAL_SETUP: err = GlobalSetup(in_data, out_data, params, output); break;
             case PF_Cmd_PARAMS_SETUP: err = ParamsSetup(in_data, out_data, params, output); break;
+            case PF_Cmd_SEQUENCE_SETUP:
+            case PF_Cmd_SEQUENCE_SETDOWN:
+            case PF_Cmd_SEQUENCE_FLATTEN:
+                break;
+            case PF_Cmd_FRAME_SETUP: err = FrameSetup(in_data, out_data, params, output); break;
+            case PF_Cmd_FRAME_SETDOWN:
+                break;
             case PF_Cmd_RENDER: err = Render(in_data, out_data, params, output); break;
             default: break;
         }
