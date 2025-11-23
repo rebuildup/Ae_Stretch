@@ -76,6 +76,7 @@ extern "C"
 {
 #endif
 
+    /*
     DllExport PF_Err
     PluginDataEntryFunction2(
         PF_PluginDataPtr inPtr,
@@ -83,6 +84,7 @@ extern "C"
         SPBasicSuite *inSPBasicSuitePtr,
         const char *inHostName,
         const char *inHostVersion);
+    */
 
     DllExport PF_Err
     EffectMain(

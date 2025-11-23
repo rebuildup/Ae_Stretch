@@ -395,6 +395,8 @@ static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *para
     }
 }
 
+// PluginDataEntryFunction2 removed to match sep_color template and fix crash
+/*
 extern "C" DllExport
 PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
                                 PF_PluginDataCB2 inPluginDataCallBackPtr,
@@ -414,6 +416,7 @@ PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
         "https://github.com/rebuildup/Ae_Stretch");
     return result;
 }
+*/
 
 extern "C" DllExport
 PF_Err EffectMain(PF_Cmd cmd,
