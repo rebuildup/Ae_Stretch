@@ -227,12 +227,12 @@ PluginDataEntryFunction2(PF_PluginDataPtr inPtr, PF_PluginDataCB2 inPluginDataCa
     result = PF_REGISTER_EFFECT_EXT2(
         inPtr,
         inPluginDataCallBackPtr,
-        "Stretch_v2",              // Name
-        "Stretch_v2",             // Match Name
-        "Stretch",                 // Category
+        "Stretch",              // Name
+        "361do Stretch",             // Match Name
+        "361do_plugins",                 // Category
         AE_RESERVED_INFO,          // Reserved Info
         "EffectMain",              // Entry point
-        "https://www.adobe.com");  // support URL
+        "https://github.com/rebuildup/Ae_Stretch");  // support URL
 
     return result;
 }

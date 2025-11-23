@@ -48,15 +48,15 @@ resource 'PiPL' (16000) {
 		},
 		
 		AE_Effect_Global_OutFlags {
-			0x02000000 //50332160
+			0x02000400
 		},
 		
 		AE_Effect_Global_OutFlags_2 {
-			0x08000000 // PF_OutFlag2_SUPPORTS_THREADED_RENDERING
+			0x08000000
 		},
 		
 		AE_Effect_Match_Name {
-			"Stretch_v2"
+			"361do Stretch"
 		},
 		
 		AE_Reserved_Info {
@@ -64,7 +64,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		AE_Effect_Support_URL {
-			"https://www.adobe.com"
+			"https://github.com/rebuildup/Ae_Stretch"
 		}
 	}
 };
