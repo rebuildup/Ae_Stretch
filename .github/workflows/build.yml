@@ -306,6 +306,13 @@ jobs:
           echo "SDK root: $SDK_ROOT"
           mkdir -p "$SDK_ROOT/Template"
           echo "SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
+          
+          # Fix permissions for PiPLTool
+          if [ -f "$SDK_ROOT/Resources/PiPLTool" ]; then
+            chmod +x "$SDK_ROOT/Resources/PiPLTool"
+            echo "Made PiPLTool executable"
+          fi
+          
           rm -f ../../AE_SDK.zip 2>/dev/null || true
           set -e
 
@@ -460,7 +467,7 @@ jobs:
           
           echo "Build successful"
           PLUGIN_PATH=""
-          for search_path in "build/Stretch.plugin" "build/Debug/Stretch.plugin" "build/Release/Stretch.plugin"; do
+          for search_path in "build/stretch_v2.plugin" "build/Debug/stretch_v2.plugin" "build/Release/stretch_v2.plugin" "build/Stretch.plugin" "build/Debug/Stretch.plugin"; do
             if [ -d "$search_path" ]; then
               PLUGIN_PATH="$search_path"
               break
@@ -468,13 +475,13 @@ jobs:
           done
           
           if [ -z "$PLUGIN_PATH" ]; then
-            PLUGIN_PATH=$(find build -name "Stretch.plugin" -type d 2>/dev/null | head -1)
+            PLUGIN_PATH=$(find build -name "*.plugin" -type d 2>/dev/null | head -1)
           fi
           
           if [ -n "$PLUGIN_PATH" ]; then
             mkdir -p "${{ github.workspace }}/artifacts"
             cp -R "$PLUGIN_PATH" "${{ github.workspace }}/artifacts/"
-            echo "Artifact copied: artifacts/Stretch.plugin"
+            echo "Artifact copied: artifacts/$(basename "$PLUGIN_PATH")"
           else
             echo "::error::Build artifact not found"
             exit 1
@@ -505,7 +512,7 @@ jobs:
           
           Write-Host "Build successful"
           Write-Host "Searching for build artifact..."
-          $searchPaths = @("x64\Release\Stretch.aex", "..\output\Stretch.aex", "Release\Stretch.aex", ".\Stretch.aex")
+          $searchPaths = @("x64\Release\stretch_v2.aex", "..\output\stretch_v2.aex", "Release\stretch_v2.aex", ".\stretch_v2.aex", "x64\Release\Stretch.aex")
           $aexPath = $null
           foreach ($path in $searchPaths) {
             if (Test-Path $path) {
@@ -515,14 +522,14 @@ jobs:
           }
           
           if (-not $aexPath) {
-            $aexPath = Get-ChildItem -Path . -Filter "Stretch.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $aexPath = Get-ChildItem -Path . -Filter "*.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           }
           
           if ($aexPath) {
             $artifactsDir = "${{ github.workspace }}\artifacts"
             New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
             Copy-Item -Path $aexPath.FullName -Destination $artifactsDir -Force
-            Write-Host "Artifact copied: $artifactsDir\Stretch.aex"
+            Write-Host "Artifact copied: $artifactsDir\$($aexPath.Name)"
           } else {
             Write-Host "Error: Build artifact not found"
             exit 1
@@ -538,18 +545,18 @@ jobs:
             exit 1
           }
           $dumpbinPath = $dumpbinCmd.Source
-          $artifactPath = Join-Path "${{ github.workspace }}" "artifacts\Stretch.aex"
-          if (-not (Test-Path $artifactPath)) {
-            Write-Host "::error::Artifact not found at $artifactPath"
+          $artifactPath = Get-ChildItem "${{ github.workspace }}\artifacts\*.aex" | Select-Object -First 1
+          if (-not $artifactPath) {
+            Write-Host "::error::Artifact not found"
             exit 1
           }
-          Write-Host "Running dumpbin on $artifactPath"
-          $dumpbinOutput = & $dumpbinPath /EXPORTS $artifactPath 2>&1
+          Write-Host "Running dumpbin on $($artifactPath.FullName)"
+          $dumpbinOutput = & $dumpbinPath /EXPORTS $artifactPath.FullName 2>&1
           $dumpbinOutput | ForEach-Object { Write-Host $_ }
           $hasEffectMain = $dumpbinOutput -match '\bEffectMain\b'
           $hasPluginData = $dumpbinOutput -match '\bPluginDataEntryFunction2\b'
           if (-not $hasEffectMain -or -not $hasPluginData) {
-            Write-Host "::error::Required exports not found in Stretch.aex"
+            Write-Host "::error::Required exports not found in $($artifactPath.Name)"
             exit 1
           }
           Write-Host "✓ Verified exports: EffectMain, PluginDataEntryFunction2"
