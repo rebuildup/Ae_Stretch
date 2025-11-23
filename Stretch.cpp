@@ -343,7 +343,6 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
                 }
             }
         }
-    }
     return PF_Err_NONE;
 }
 
