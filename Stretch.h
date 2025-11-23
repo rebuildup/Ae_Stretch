@@ -39,7 +39,7 @@
 #define MINOR_VERSION 1
 #define BUG_VERSION 0
 #define STAGE_VERSION PF_Stage_RELEASE
-#define BUILD_VERSION 1
+#define BUILD_VERSION 0
 #define NAME "stretch_v2"
 #define DESCRIPTION "Stretches pixels based on an anchor point and angle"
 
