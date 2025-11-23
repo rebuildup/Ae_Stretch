@@ -30,7 +30,7 @@ GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
     // Support 16-bit (Deep Color) and 32-bit Float
     out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE | PF_OutFlag_PIX_INDEPENDENT;
-    out_data->out_flags2 = PF_OutFlag2_FLOAT_COLOR_AWARE | PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
+    out_data->out_flags2 = PF_OutFlag2_FLOAT_COLOR_AWARE | PF_OutFlag2_SUPPORTS_SMART_RENDER | PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
     return PF_Err_NONE;
 }
 
@@ -75,6 +75,93 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
 
     out_data->num_params = STRETCH_NUM_PARAMS;
     return PF_Err_NONE;
+}
+
+static PF_Err
+PreRender(
+    PF_InData* in_data,
+    PF_OutData* out_data,
+    PF_PreRenderExtra* extra)
+{
+    PF_Err err = PF_Err_NONE;
+    PF_RenderRequest req = extra->input->output_request;
+    PF_CheckoutResult in_result;
+
+    // Checkout input
+    ERR(extra->cb->checkout_layer(in_data->effect_ref,
+        STRETCH_INPUT,
+        STRETCH_INPUT,
+        &req,
+        in_data->current_time,
+        in_data->time_step,
+        in_data->time_scale,
+        &in_result));
+
+    // Set result rects
+    if (!err) {
+        UnionLRect(&in_result.result_rect, &extra->output->result_rect);
+        UnionLRect(&in_result.max_result_rect, &extra->output->max_result_rect);
+    }
+
+    return err;
+}
+
+static PF_Err
+SmartRender(
+    PF_InData* in_data,
+    PF_OutData* out_data,
+    PF_SmartRenderExtra* extra)
+{
+    PF_Err err = PF_Err_NONE;
+    PF_EffectWorld* input_world = NULL;
+    PF_EffectWorld* output_world = NULL;
+    PF_WorldSuite2* wsP = NULL;
+
+    // Get World Suite
+    ERR(AEFX_AcquireSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, "PFWorldSuite", (void**)&wsP));
+
+    if (!err) {
+        // Checkout input/output
+        ERR((extra->cb->checkout_layer_pixels(in_data->effect_ref, STRETCH_INPUT, &input_world)));
+        ERR(extra->cb->checkout_output(in_data->effect_ref, &output_world));
+    }
+
+    if (!err && input_world && output_world) {
+        // Fix:
+        PF_ParamDef p[STRETCH_NUM_PARAMS];
+        PF_ParamDef* pp[STRETCH_NUM_PARAMS];
+        
+        // Input
+        AEFX_CLR_STRUCT(p[STRETCH_INPUT]);
+        p[STRETCH_INPUT].u.ld = *input_world;
+        pp[STRETCH_INPUT] = &p[STRETCH_INPUT];
+
+        // Params
+        for (int i = 1; i < STRETCH_NUM_PARAMS; ++i) {
+            PF_Checkout_Param(in_data, i, in_data->current_time, in_data->time_step, in_data->time_scale, &p[i]);
+            pp[i] = &p[i];
+        }
+
+        // Call Render
+        // Check bit depth
+        int bpp = (output_world->width > 0) ? (output_world->rowbytes / output_world->width) : 0;
+        if (bpp == sizeof(PF_PixelFloat)) {
+            err = RenderGeneric<PF_PixelFloat>(in_data, out_data, pp, output_world);
+        } else if (bpp == sizeof(PF_Pixel16)) {
+            err = RenderGeneric<PF_Pixel16>(in_data, out_data, pp, output_world);
+        } else {
+            err = RenderGeneric<PF_Pixel>(in_data, out_data, pp, output_world);
+        }
+        
+        // Checkin params
+        for (int i = 1; i < STRETCH_NUM_PARAMS; ++i) {
+            PF_Checkin_Param(in_data, i, &p[i]);
+        }
+    }
+    
+    if (wsP) AEFX_ReleaseSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, "PFWorldSuite");
+
+    return err;
 }
 
 #ifndef M_PI
@@ -405,9 +492,9 @@ PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
     result = PF_REGISTER_EFFECT_EXT2(
         inPtr,
         inPluginDataCallBackPtr,
-        "Ae_Stretch", // Name
-        "Ae_Stretch", // Match Name
-        "Ae_Plugins", // Category
+        "stretch_v2", // Name
+        "361do stretch_v2", // Match Name
+        "361do_plugins", // Category
         AE_RESERVED_INFO,
         "EffectMain",
         "https://github.com/rebuildup/Ae_Stretch");
