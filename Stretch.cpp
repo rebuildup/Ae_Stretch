@@ -28,6 +28,7 @@ GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
     // Support 16-bit (Deep Color) - Classic Render
     out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE;
+    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
     return PF_Err_NONE;
 }
 
@@ -199,12 +200,12 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     const A_long output_rowbytes = output->rowbytes;
 
     // Parameters
-    const int anchor_x = (params[ANCHOR_POINT_ID]->u.td.x_value >> 16);
-    const int anchor_y = (params[ANCHOR_POINT_ID]->u.td.y_value >> 16);
-    float angle_deg = static_cast<float>(params[ANGLE_ID]->u.ad.value >> 16);
+    const int anchor_x = (params[STRETCH_ANCHOR_POINT]->u.td.x_value >> 16);
+    const int anchor_y = (params[STRETCH_ANCHOR_POINT]->u.td.y_value >> 16);
+    float angle_deg = static_cast<float>(params[STRETCH_ANGLE]->u.ad.value >> 16);
     const float angle_rad = angle_deg * (static_cast<float>(M_PI) / 180.0f);
-    const float shift_amount = static_cast<float>(params[SHIFT_AMOUNT_ID]->u.fs_d.value);
-    const int direction = params[DIRECTION_ID]->u.pd.value;
+    const float shift_amount = static_cast<float>(params[STRETCH_SHIFT_AMOUNT]->u.fs_d.value);
+    const int direction = params[STRETCH_DIRECTION]->u.pd.value;
 
     // Downsample adjustment
     const float downsample_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
