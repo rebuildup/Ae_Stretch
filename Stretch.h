@@ -27,6 +27,9 @@
 #endif
 
 // Define Smart Render structs locally to avoid missing header issues
+typedef A_long PF_Field;
+typedef A_Matrix4 PF_ChannelMatrix;
+
 typedef struct PF_SmartRenderCallbacks_Local {
     PF_Err (*checkout_layer_pixels)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_EffectWorld **pixels);
     PF_Err (*checkout_output)(PF_ProgPtr effect_ref, PF_EffectWorld **output);
@@ -39,8 +42,25 @@ typedef struct PF_SmartRenderExtra_Local {
     void *unused;
 } PF_SmartRenderExtra_Local;
 
+typedef struct PF_RenderRequest_Local {
+    PF_LRect rect;
+    PF_Field field;
+    PF_ChannelMatrix channel_matrix;
+    PF_Boolean preserve_rgb_of_zero_alpha;
+    PF_Boolean preserve_rgb_of_zero_alpha_is_valid;
+    void *unused;
+} PF_RenderRequest_Local;
+
+typedef struct PF_CheckoutResult_Local {
+    PF_LRect result_rect;
+    PF_LRect max_result_rect;
+    PF_Boolean par_varying;
+    PF_Boolean par_varying_is_valid;
+    void *unused;
+} PF_CheckoutResult_Local;
+
 typedef struct PF_PreRenderInput_Local {
-    PF_RenderRequest output_request;
+    PF_RenderRequest_Local output_request;
     short bit_depth;
     void *unused;
 } PF_PreRenderInput_Local;
@@ -52,8 +72,8 @@ typedef struct PF_PreRenderOutput_Local {
 } PF_PreRenderOutput_Local;
 
 typedef struct PF_PreRenderCallbacks_Local {
-    PF_Err (*checkout_layer)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_ParamIndex req_index, const PF_RenderRequest *req, A_long current_time, A_long time_step, A_u_long time_scale, PF_CheckoutResult *result);
-    PF_Err (*checkout_layer_pixels)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_ParamIndex req_index, const PF_RenderRequest *req, A_long current_time, A_long time_step, A_u_long time_scale, PF_EffectWorld **pixels);
+    PF_Err (*checkout_layer)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_ParamIndex req_index, const PF_RenderRequest_Local *req, A_long current_time, A_long time_step, A_u_long time_scale, PF_CheckoutResult_Local *result);
+    PF_Err (*checkout_layer_pixels)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_ParamIndex req_index, const PF_RenderRequest_Local *req, A_long current_time, A_long time_step, A_u_long time_scale, PF_EffectWorld **pixels);
 } PF_PreRenderCallbacks_Local;
 
 typedef struct PF_PreRenderExtra_Local {
