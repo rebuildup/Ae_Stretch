@@ -45,17 +45,6 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
 
     AEFX_CLR_STRUCT(def);
 
-    PF_ADD_POINT("Anchor Point",
-                 50, 50,
-                 false,
-                 ANCHOR_POINT_DISK_ID);
-
-    AEFX_CLR_STRUCT(def);
-
-    PF_ADD_ANGLE("Angle", 0, ANGLE_DISK_ID);
-
-    AEFX_CLR_STRUCT(def);
-
     PF_ADD_FLOAT_SLIDERX(
         "Shift Amount",
         0,
@@ -67,6 +56,17 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
         0,
         0,
         SHIFT_AMOUNT_DISK_ID);
+
+    AEFX_CLR_STRUCT(def);
+
+    PF_ADD_POINT("Anchor Point",
+                 50, 50,
+                 false,
+                 ANCHOR_POINT_DISK_ID);
+
+    AEFX_CLR_STRUCT(def);
+
+    PF_ADD_ANGLE("Angle", 0, ANGLE_DISK_ID);
 
     AEFX_CLR_STRUCT(def);
 

@@ -38,7 +38,7 @@
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 1
 #define BUG_VERSION 0
-#define STAGE_VERSION PF_Stage_DEVELOP
+#define STAGE_VERSION PF_Stage_RELEASE
 #define BUILD_VERSION 1
 #define NAME "stretch_v2"
 #define DESCRIPTION "Stretches pixels based on an anchor point and angle"
@@ -55,18 +55,18 @@ enum
 enum
 {
     STRETCH_INPUT = 0,
+    STRETCH_SHIFT_AMOUNT,
     STRETCH_ANCHOR_POINT,
     STRETCH_ANGLE,
-    STRETCH_SHIFT_AMOUNT,
     STRETCH_DIRECTION,
     STRETCH_NUM_PARAMS
 };
 
 enum
 {
-    ANCHOR_POINT_DISK_ID = 1,
+    SHIFT_AMOUNT_DISK_ID = 1,
+    ANCHOR_POINT_DISK_ID,
     ANGLE_DISK_ID,
-    SHIFT_AMOUNT_DISK_ID,
     DIRECTION_DISK_ID
 };
 
