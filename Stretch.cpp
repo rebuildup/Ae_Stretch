@@ -122,10 +122,11 @@ SmartRender(
     PF_Err err = PF_Err_NONE;
     PF_EffectWorld* input_world = NULL;
     PF_EffectWorld* output_world = NULL;
+    
+    // Use SuiteHandler for cleaner suite acquisition
+    AEGP_SuiteHandler suites(in_data->pica_basicP);
     PF_WorldSuite2* wsP = NULL;
-
-    // Get World Suite
-    ERR(in_data->pica_basicP->AcquireSuite(kPFWorldSuite, kPFWorldSuiteVersion2, (const void**)&wsP));
+    ERR(suites.SPBasicSuite()->AcquireSuite(kPFWorldSuite, kPFWorldSuiteVersion2, (const void**)&wsP));
 
     if (!err) {
         // Checkout input/output
@@ -166,7 +167,14 @@ SmartRender(
         }
     }
     
-    if (wsP) in_data->pica_basicP->ReleaseSuite(kPFWorldSuite, kPFWorldSuiteVersion2);
+    // Release suite if acquired manually, but SuiteHandler doesn't own this one unless we use a helper method.
+    // However, SuiteHandler is usually for AEGP suites.
+    // For PF suites, we often use manual acquire or a specific helper.
+    // But wait, SuiteHandler destructor releases suites it acquired via its methods.
+    // If we use SPBasicSuite()->AcquireSuite, we must release manually.
+    if (wsP) {
+        suites.SPBasicSuite()->ReleaseSuite(kPFWorldSuite, kPFWorldSuiteVersion2);
+    }
 
     return err;
 }
