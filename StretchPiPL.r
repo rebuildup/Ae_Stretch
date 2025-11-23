@@ -33,41 +33,6 @@ resource 'PiPL' (16000) {
 			2,
 			0
 		},
-#include "AEConfig.h"
-#include "AE_EffectVers.h"
-
-#ifndef AE_OS_WIN
-	#include <AE_General.r>
-#endif
-	
-resource 'PiPL' (16000) {
-	{	
-		Kind {
-			AEEffect
-		},
-		
-		Name {
-			"stretch_v2"
-		},
-		
-		Category {
-			"361do_plugins"
-		},
-#ifdef AE_OS_WIN
-	#ifdef AE_PROC_INTELx64
-		CodeWin64X86 {"EffectMain"},
-	#endif
-#else
-	#ifdef AE_OS_MAC
-		CodeMacIntel64 {"EffectMain"},
-		CodeMacARM64 {"EffectMain"},
-	#endif
-#endif
-		
-		AE_PiPL_Version {
-			2,
-			0
-		},
 		
 		AE_Effect_Spec_Version {
 			PF_PLUG_IN_VERSION,
@@ -83,11 +48,11 @@ resource 'PiPL' (16000) {
 		},
 		
 		AE_Effect_Global_OutFlags {
-			0x2000400
+			33556480
 		},
 		
 		AE_Effect_Global_OutFlags_2 {
-			0x8001001
+			134222849
 		},
 		
 		AE_Effect_Match_Name {
