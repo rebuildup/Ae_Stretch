@@ -88,9 +88,10 @@ static PF_Err
 PreRender(
     PF_InData* in_data,
     PF_OutData* out_data,
-    PF_PreRenderExtra* extra)
+    void* extraP)
 {
     PF_Err err = PF_Err_NONE;
+    PF_PreRenderExtra_Local* extra = (PF_PreRenderExtra_Local*)extraP;
     PF_RenderRequest req = extra->input->output_request;
     PF_CheckoutResult in_result;
 
@@ -531,7 +532,7 @@ PF_Err EffectMain(PF_Cmd cmd,
             case PF_Cmd_ABOUT: err = About(in_data, out_data, params, output); break;
             case PF_Cmd_GLOBAL_SETUP: err = GlobalSetup(in_data, out_data, params, output); break;
             case PF_Cmd_PARAMS_SETUP: err = ParamsSetup(in_data, out_data, params, output); break;
-            case PF_Cmd_SMART_PRE_RENDER: err = PreRender(in_data, out_data, (PF_PreRenderExtra*)extra); break;
+            case PF_Cmd_SMART_PRE_RENDER: err = PreRender(in_data, out_data, extra); break;
         case PF_Cmd_SMART_RENDER: err = SmartRender(in_data, out_data, extra); break;
             default: break;
         }

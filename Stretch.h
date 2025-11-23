@@ -39,6 +39,30 @@ typedef struct PF_SmartRenderExtra_Local {
     void *unused;
 } PF_SmartRenderExtra_Local;
 
+typedef struct PF_PreRenderInput_Local {
+    PF_RenderRequest output_request;
+    short bit_depth;
+    void *unused;
+} PF_PreRenderInput_Local;
+
+typedef struct PF_PreRenderOutput_Local {
+    PF_LRect result_rect;
+    PF_LRect max_result_rect;
+    void *unused;
+} PF_PreRenderOutput_Local;
+
+typedef struct PF_PreRenderCallbacks_Local {
+    PF_Err (*checkout_layer)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_ParamIndex req_index, const PF_RenderRequest *req, A_long current_time, A_long time_step, A_u_long time_scale, PF_CheckoutResult *result);
+    PF_Err (*checkout_layer_pixels)(PF_ProgPtr effect_ref, PF_ParamIndex index, PF_ParamIndex req_index, const PF_RenderRequest *req, A_long current_time, A_long time_step, A_u_long time_scale, PF_EffectWorld **pixels);
+} PF_PreRenderCallbacks_Local;
+
+typedef struct PF_PreRenderExtra_Local {
+    PF_PreRenderCallbacks_Local *cb;
+    PF_PreRenderInput_Local *input;
+    PF_PreRenderOutput_Local *output;
+    void *unused;
+} PF_PreRenderExtra_Local;
+
 #ifndef DllExport
 #if defined(_WIN32)
 #define DllExport __declspec(dllexport)
