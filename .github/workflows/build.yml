@@ -214,9 +214,7 @@ jobs:
         if: matrix.platform == 'mac'
         run: |
           set +e
-          
           echo "Extracting SDK..."
-          
           mkdir -p ae_sdk_work
           cd ae_sdk_work
           unzip -q ../AE_SDK.zip
@@ -248,24 +246,20 @@ jobs:
             echo "SDK extracted successfully"
           else
             echo "SDK directory not found, attempting manual extraction..."
-            
             if [ ! -f "zstd" ] || [ ! -f "ae25.6_61.64bit.AfterEffectsSDK.tar.zstd.zip" ]; then
               echo "Error: Required files not found"
               ls -la
               exit 1
             fi
-            
             echo "Running zstd extraction..."
             set +e
             ./zstd -cd ae25.6_61.64bit.AfterEffectsSDK.tar.zstd.zip | tar xf - -C . 2>&1 | head -50
             ZSTD_EXIT=$?
             set -e
-            
             if [ $ZSTD_EXIT -ne 0 ]; then
               echo "Error: zstd extraction failed (exit code: $ZSTD_EXIT)"
               exit 1
             fi
-            
             sleep 2
             if [ -d "ae25.6_61.64bit.AfterEffectsSDK" ]; then
               echo "SDK extraction completed"
@@ -276,9 +270,7 @@ jobs:
             fi
           fi
           
-          # Find SDK root (Headers/Util/Resources location)
           SDK_ROOT=""
-          
           shopt -s nullglob
           for dir in ae*.AfterEffectsSDK; do
             if [ -d "$dir/Examples/Headers" ] && [ -d "$dir/Examples/Util" ] && [ -d "$dir/Examples/Resources" ]; then
@@ -312,7 +304,6 @@ jobs:
           fi
           
           echo "SDK root: $SDK_ROOT"
-          
           mkdir -p "$SDK_ROOT/Template"
           echo "SDK_ROOT=$SDK_ROOT" >> $GITHUB_ENV
           rm -f ../../AE_SDK.zip 2>/dev/null || true
@@ -323,13 +314,11 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Extracting SDK..."
-          
           New-Item -ItemType Directory -Path "ae_sdk_work" -Force | Out-Null
           Set-Location "ae_sdk_work"
           Expand-Archive -Path "..\AE_SDK.zip" -DestinationPath "." -Force
           
           $extractScript = Get-ChildItem -Recurse -Filter "extractzstd.bat" | Select-Object -First 1
-          
           if (-not $extractScript) {
             Write-Host "Error: extractzstd.bat not found"
             Get-ChildItem -Recurse -Filter "*.bat"
@@ -337,7 +326,6 @@ jobs:
           }
           
           Set-Location $extractScript.DirectoryName
-          
           Write-Host "Running SDK extraction script..."
           cmd /c extractzstd.bat
           
@@ -345,9 +333,7 @@ jobs:
             Write-Host "Warning: extractzstd.bat exited with code $LASTEXITCODE (continuing...)"
           }
           
-          # Find SDK root (Headers/Util/Resources location)
           $sdkRoot = $null
-          
           $sdkDirs = Get-ChildItem -Directory -Filter "ae*.AfterEffectsSDK" -ErrorAction SilentlyContinue
           foreach ($dir in $sdkDirs) {
             $examplesPath = Join-Path $dir.FullName "Examples"
@@ -387,7 +373,6 @@ jobs:
           }
           
           Write-Host "SDK root: $sdkRoot"
-          
           New-Item -ItemType Directory -Path "$sdkRoot\Template" -Force | Out-Null
           Add-Content -Path $env:GITHUB_ENV -Value "SDK_ROOT=$sdkRoot"
           Remove-Item "..\AE_SDK.zip" -Force -ErrorAction SilentlyContinue
@@ -404,7 +389,6 @@ jobs:
           Set-Location $sdkParent
           
           $buildSln = $null
-          
           if (Test-Path "BuildAll.sln") {
             $buildSln = "BuildAll.sln"
           } elseif (Test-Path "Examples\BuildAll.sln") {
@@ -414,55 +398,22 @@ jobs:
           
           if ($buildSln) {
             Write-Host "Building SDK dependencies ($buildSln)..."
-            Write-Host "Note: This may fail without admin rights"
-            
-            $buildSuccess = $false
             try {
-              msbuild $buildSln `
-                /p:Configuration=Debug `
-                /p:Platform=x64 `
-                /t:Build `
-                /v:minimal `
-                /m:1 `
-                /nologo `
-                /maxcpucount:1 2>&1 | Out-Null
-              
+              msbuild $buildSln /p:Configuration=Debug /p:Platform=x64 /t:Build /v:minimal /m:1 /nologo /maxcpucount:1 2>&1 | Out-Null
               if ($LASTEXITCODE -eq 0) {
                 Write-Host "SDK dependencies built successfully"
-                $buildSuccess = $true
               }
-            } catch {
-              # Silently ignore build errors
-            }
-            
-            if (-not $buildSuccess) {
-              Write-Host "SDK dependencies build skipped (not required for plugin build)"
-            }
-          } else {
-            Write-Host "BuildAll.sln not found (not required for plugin build)"
+            } catch {}
           }
-          
-          # Always succeed this step
           exit 0
 
       - name: Copy plugin to SDK Template directory (Mac)
         if: matrix.platform == 'mac'
         run: |
           echo "Copying plugin to SDK Template directory..."
-          
           PLUGIN_DIR="$SDK_ROOT/Template/Ae_Stretch"
           mkdir -p "$PLUGIN_DIR"
-          
-          rsync -av \
-            --exclude='.git' \
-            --exclude='tmp' \
-            --exclude='ae_sdk_work' \
-            --exclude='.github' \
-            --exclude='output' \
-            --exclude='AE_SDK.zip' \
-            "${{ github.workspace }}/" \
-            "$PLUGIN_DIR/"
-          
+          rsync -av --exclude='.git' --exclude='tmp' --exclude='ae_sdk_work' --exclude='.github' --exclude='output' --exclude='AE_SDK.zip' "${{ github.workspace }}/" "$PLUGIN_DIR/"
           echo "Plugin copied to: $PLUGIN_DIR"
           echo "PLUGIN_DIR=$PLUGIN_DIR" >> $GITHUB_ENV
 
@@ -471,18 +422,10 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Copying plugin to SDK Template directory..."
-          
           $pluginDir = "$env:SDK_ROOT\Template\Ae_Stretch"
           New-Item -ItemType Directory -Path $pluginDir -Force | Out-Null
-          
           $excludeDirs = @('.git', 'tmp', 'ae_sdk_work', '.github', 'output')
-          
-          Get-ChildItem "${{ github.workspace }}" -Force | Where-Object {
-            $_.Name -notin $excludeDirs -and $_.Name -ne 'AE_SDK.zip'
-          } | ForEach-Object {
-            Copy-Item -Path $_.FullName -Destination $pluginDir -Recurse -Force
-          }
-          
+          Get-ChildItem "${{ github.workspace }}" -Force | Where-Object { $_.Name -notin $excludeDirs -and $_.Name -ne 'AE_SDK.zip' } | ForEach-Object { Copy-Item -Path $_.FullName -Destination $pluginDir -Recurse -Force }
           Write-Host "Plugin copied to: $pluginDir"
           Add-Content -Path $env:GITHUB_ENV -Value "PLUGIN_DIR=$pluginDir"
 
@@ -490,71 +433,34 @@ jobs:
         if: matrix.platform == 'mac'
         run: |
           set -e
-          
           echo "Building plugin..."
-          
           PLUGIN_BUILD_DIR="${{ github.workspace }}/ae_plugin_output"
           mkdir -p "$PLUGIN_BUILD_DIR"
           export AE_PLUGIN_BUILD_DIR="$PLUGIN_BUILD_DIR"
           
           cd "$PLUGIN_DIR/Mac"
-          
           if [ ! -f "Stretch.xcodeproj/project.pbxproj" ]; then
             echo "Error: Xcode project not found"
             ls -la
             exit 1
           fi
           
-          echo "Build configuration:"
-          echo "  Configuration: Debug"
-          echo "  SDK: macosx"
-          echo "  Architectures: x86_64, arm64"
-          echo "  Plugin directory: $PLUGIN_DIR"
-          echo "  Current directory: $(pwd)"
-          
-          # Build with detailed output
           echo "Starting xcodebuild..."
           BUILD_LOG="${{ github.workspace }}/xcodebuild.log"
-          
           set +e
-          xcodebuild build \
-            -project Stretch.xcodeproj \
-            -target Stretch \
-            -configuration Debug \
-            -sdk macosx \
-            -arch x86_64 \
-            -arch arm64 \
-            -destination 'platform=macOS' \
-            CONFIGURATION_BUILD_DIR="$(pwd)/build" \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tee "$BUILD_LOG"
+          xcodebuild build -project Stretch.xcodeproj -target Stretch -configuration Debug -sdk macosx -arch x86_64 -arch arm64 -destination 'platform=macOS' CONFIGURATION_BUILD_DIR="$(pwd)/build" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$BUILD_LOG"
           BUILD_EXIT_CODE=$?
           set -e
           
           if [ $BUILD_EXIT_CODE -ne 0 ]; then
             echo "::error::xcodebuild failed with exit code $BUILD_EXIT_CODE"
-            echo "Last 100 lines of build log:"
             tail -100 "$BUILD_LOG" || true
-            echo "Full build log saved to: $BUILD_LOG"
             exit 1
           fi
           
           echo "Build successful"
-          
-          # Find build artifact
-          echo "Searching for build artifact..."
           PLUGIN_PATH=""
-
-          # Try common locations for both legacy and new product names
-          for search_path in \
-            "build/stretch_v2.plugin" \
-            "build/Stretch.plugin" \
-            "build/Debug/stretch_v2.plugin" \
-            "build/Debug/Stretch.plugin" \
-            "build/Release/stretch_v2.plugin" \
-            "build/Release/Stretch.plugin"; do
+          for search_path in "build/Stretch.plugin" "build/Debug/Stretch.plugin" "build/Release/Stretch.plugin"; do
             if [ -d "$search_path" ]; then
               PLUGIN_PATH="$search_path"
               break
@@ -562,292 +468,44 @@ jobs:
           done
           
           if [ -z "$PLUGIN_PATH" ]; then
-            PLUGIN_PATH=$(find build -type d \( -name "stretch_v2.plugin" -o -name "Stretch.plugin" \) 2>/dev/null | head -1)
+            PLUGIN_PATH=$(find build -name "Stretch.plugin" -type d 2>/dev/null | head -1)
           fi
           
           if [ -n "$PLUGIN_PATH" ]; then
             mkdir -p "${{ github.workspace }}/artifacts"
             cp -R "$PLUGIN_PATH" "${{ github.workspace }}/artifacts/"
-            artifact_name=$(basename "$PLUGIN_PATH")
-            echo "Artifact copied: artifacts/$artifact_name"
+            echo "Artifact copied: artifacts/Stretch.plugin"
           else
             echo "::error::Build artifact not found"
-            echo "Build directory contents:"
-            find build -type f -o -type d | head -30 || true
-            echo "Searching for any .plugin files:"
-            find . -name "*.plugin" -o -name "*.o" | head -20 || true
             exit 1
           fi
-          
+
       - name: Build Plugin (Windows)
         if: matrix.platform == 'win'
         shell: pwsh
         run: |
           Write-Host "Building plugin..."
-          
           $pluginBuildDir = "${{ github.workspace }}\ae_plugin_output"
           New-Item -ItemType Directory -Path $pluginBuildDir -Force | Out-Null
           $env:AE_PLUGIN_BUILD_DIR = $pluginBuildDir
           
           Set-Location "$env:PLUGIN_DIR\Win"
-          
           if (-not (Test-Path "Stretch.sln")) {
             Write-Host "Error: Solution file not found"
             Get-ChildItem
             exit 1
           }
           
-          $outputDir = Join-Path (Get-Location).Path "..\output"
-          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          msbuild Stretch.sln /p:Configuration=Release /p:Platform=x64 /t:Build /v:normal /m /nologo
           
-          Write-Host "Build configuration:"
-          Write-Host "  Configuration: Release"
-          Write-Host "  Platform: x64"
-          Write-Host ""
-          Write-Host "Checking environment:"
-          Write-Host "  SDK Root: $env:SDK_ROOT"
-          Write-Host "  Plugin Dir: $env:PLUGIN_DIR"
-          Write-Host "  Current dir: $(Get-Location)"
-          Write-Host "  StretchPiPL.r exists: $(Test-Path "..\StretchPiPL.r")"
-          Write-Host ""
-          
-          # Check paths before building
-          Write-Host "Pre-build path checks:"
-          $projectDir = (Get-Location).Path
-          $expectedHeaders = Join-Path (Split-Path (Split-Path (Split-Path $projectDir -Parent) -Parent) -Parent) "Headers"
-          $expectedPiPLTool = Join-Path (Split-Path (Split-Path (Split-Path $projectDir -Parent) -Parent) -Parent) "Resources\PiPLTool.exe"
-          Write-Host "  Project Dir: $projectDir"
-          Write-Host "  Expected Headers: $expectedHeaders"
-          Write-Host "  Headers exists: $(Test-Path $expectedHeaders)"
-          Write-Host "  Expected PiPLTool: $expectedPiPLTool"
-          Write-Host "  PiPLTool exists: $(Test-Path $expectedPiPLTool)"
-          Write-Host "  SDK Root: $env:SDK_ROOT"
-          Write-Host "  SDK Headers: $(Test-Path "$env:SDK_ROOT\Headers")"
-          Write-Host "  SDK PiPLTool: $(Test-Path "$env:SDK_ROOT\Resources\PiPLTool.exe")"
-          Write-Host ""
-          
-          # Run MSBuild with detailed output
-          Write-Host "Starting MSBuild..."
-          $buildLogFile = Join-Path $projectDir "build.log"
-          $buildOutputFile = Join-Path $projectDir "build_output.txt"
-          
-          # Calculate SDK root from plugin dir (should be SDK_ROOT\Template\Ae_Stretch)
-          $calculatedSdkRoot = Split-Path (Split-Path $env:PLUGIN_DIR -Parent) -Parent
-          Write-Host "Calculated SDK Root: $calculatedSdkRoot"
-          Write-Host "Environment SDK Root: $env:SDK_ROOT"
-          
-          # Use environment SDK_ROOT if available, otherwise use calculated path
-          $sdkRootForBuild = if ($env:SDK_ROOT) { $env:SDK_ROOT } else { $calculatedSdkRoot }
-          Write-Host "Using SDK Root for build: $sdkRootForBuild"
-          
-          # Run MSBuild with output captured to both console and file
-          Write-Host "Running MSBuild..."
-          
-          # Run MSBuild and capture output
-          # Note: We need to capture output first, then check exit code immediately
-          $buildOutput = & msbuild Stretch.sln `
-            /p:Configuration=Release `
-            /p:Platform=x64 `
-            /p:SDK_ROOT="$sdkRootForBuild" `
-            /t:Build `
-            /v:normal `
-            /m `
-            /nologo `
-            "/clp:ShowTimestamp;Verbosity=normal" `
-            2>&1
-          
-          # Capture exit code immediately after command execution
-          $buildExitCode = $LASTEXITCODE
-          
-          # Save output to file and display
-          $buildOutput | Out-File -FilePath $buildOutputFile -Encoding UTF8
-          $buildOutput | ForEach-Object { Write-Host $_ }
-          
-          Write-Host ""
-          Write-Host "MSBuild exit code: $buildExitCode"
-          Write-Host ""
-          
-          # Check exit code
-          if ($buildExitCode -ne 0) {
-            Write-Host ""
-            Write-Host "=== MSBuild failed, showing full detailed output ==="
-            Write-Host ""
-            
-            # Re-run with detailed output to see all errors
-            $detailedOutput = & msbuild Stretch.sln `
-              /p:Configuration=Release `
-              /p:Platform=x64 `
-              /p:SDK_ROOT="$sdkRootForBuild" `
-              /t:Build `
-              /v:detailed `
-              /m `
-              /nologo `
-              2>&1
-            
-            # Capture exit code immediately
-            $buildExitCode = $LASTEXITCODE
-            
-            $detailedOutput | ForEach-Object { Write-Host $_ }
-            $detailedOutput | Out-File -FilePath $buildOutputFile -Append -Encoding UTF8
-            
-            Write-Host ""
-            Write-Host "Detailed MSBuild exit code: $buildExitCode"
-            Write-Host ""
-          }
-          
-          if ($buildExitCode -ne 0) {
-            Write-Host ""
-            Write-Host "::error::Build failed with exit code: $buildExitCode"
-            Write-Host ""
-            
-            # Show build output file if it exists
-            if (Test-Path $buildOutputFile) {
-              Write-Host "=== Build output file (full content) ==="
-              $outputLines = Get-Content $buildOutputFile
-              if ($outputLines) {
-                $outputLines | ForEach-Object { Write-Host $_ }
-              } else {
-                Write-Host "  (file is empty)"
-              }
-              Write-Host ""
-            } else {
-              Write-Host "=== Build output file not found: $buildOutputFile ==="
-              Write-Host ""
-            }
-            
-            # Show build log file if it exists
-            if (Test-Path $buildLogFile) {
-              Write-Host "=== Build log file (full content) ==="
-              $logLines = Get-Content $buildLogFile
-              if ($logLines) {
-                $logLines | ForEach-Object { Write-Host $_ }
-              } else {
-                Write-Host "  (file is empty)"
-              }
-              Write-Host ""
-            } else {
-              Write-Host "=== Build log file not found: $buildLogFile ==="
-              Write-Host ""
-            }
-            
-            # Extract and display all error and warning messages
-            Write-Host "=== Extracting error and warning messages ==="
-            $allErrors = @()
-            $allWarnings = @()
-            
-            # MSBuild error patterns
-            $errorPatterns = @(
-              "error\s+[A-Z]\d+:",  # error C1234:, error LNK1234:, etc.
-              "MSB\d+:",            # MSB1234: error
-              "error\s+:",           # error:
-              "Error\s+:",           # Error:
-              "ERROR\s+:",            # ERROR:
-              "失敗",                 # Japanese: failure
-              "Failed",              # Failed
-              "FAILED",              # FAILED
-              "失敗しました",         # Japanese: failed
-              "ビルドに失敗",         # Japanese: build failed
-              "Build FAILED"         # Build FAILED
-            )
-            
-            # MSBuild warning patterns
-            $warningPatterns = @(
-              "warning\s+[A-Z]\d+:",  # warning C1234:, warning LNK1234:, etc.
-              "warning\s+:",          # warning:
-              "Warning\s+:",          # Warning:
-              "WARNING\s+:",          # WARNING:
-              "警告"                  # Japanese: warning
-            )
-            
-            $errorPattern = "(" + ($errorPatterns -join "|") + ")"
-            $warningPattern = "(" + ($warningPatterns -join "|") + ")"
-            
-            if (Test-Path $buildOutputFile) {
-              Write-Host "Searching in build output file..."
-              $allErrors += Get-Content $buildOutputFile | Select-String -Pattern $errorPattern -Context 3,3
-              $allWarnings += Get-Content $buildOutputFile | Select-String -Pattern $warningPattern -Context 2,2
-            }
-            if (Test-Path $buildLogFile) {
-              Write-Host "Searching in build log file..."
-              $allErrors += Get-Content $buildLogFile | Select-String -Pattern $errorPattern -Context 3,3
-              $allWarnings += Get-Content $buildLogFile | Select-String -Pattern $warningPattern -Context 2,2
-            }
-            
-            if ($allWarnings.Count -gt 0) {
-              Write-Host "=== Warnings (that may be treated as errors) ==="
-              $allWarnings | Select-Object -First 50 | ForEach-Object { 
-                Write-Host "  $_"
-              }
-              Write-Host ""
-            }
-            
-            if ($allErrors.Count -gt 0) {
-              Write-Host "Found $($allErrors.Count) error-related lines:"
-              $allErrors | Select-Object -First 150 | ForEach-Object { 
-                Write-Host "  $_"
-              }
-            } else {
-              Write-Host "No explicit error messages found in logs"
-              Write-Host ""
-              Write-Host "=== Showing last 100 lines of build output file ==="
-              if (Test-Path $buildOutputFile) {
-                Get-Content $buildOutputFile -Tail 100 | ForEach-Object { Write-Host "  $_" }
-              } else {
-                Write-Host "  Build output file not found: $buildOutputFile"
-              }
-              Write-Host ""
-              Write-Host "=== Showing last 100 lines of build log file ==="
-              if (Test-Path $buildLogFile) {
-                Get-Content $buildLogFile -Tail 100 | ForEach-Object { Write-Host "  $_" }
-              } else {
-                Write-Host "  Build log file not found: $buildLogFile"
-              }
-            }
-            Write-Host ""
-            
-            Write-Host "Checking SDK structure:"
-            Write-Host "  SDK Root: $env:SDK_ROOT"
-            Write-Host "  Headers: $(Test-Path "$env:SDK_ROOT\Headers")"
-            Write-Host "  Util: $(Test-Path "$env:SDK_ROOT\Util")"
-            Write-Host "  Resources: $(Test-Path "$env:SDK_ROOT\Resources")"
-            $piplTool = "$env:SDK_ROOT\Resources\PiPLTool.exe"
-            Write-Host "  PiPLTool.exe: $(Test-Path $piplTool)"
-            if (Test-Path $piplTool) {
-              Write-Host "  PiPLTool path: $piplTool"
-            }
-            Write-Host ""
-            Write-Host "Checking project files:"
-            Write-Host "  Current dir: $(Get-Location)"
-            Write-Host "  StretchPiPL.r: $(Test-Path "..\StretchPiPL.r")"
-            Write-Host "  StretchPiPL.rc: $(Test-Path "StretchPiPL.rc")"
-            Write-Host ""
-            Write-Host "Checking intermediate directories:"
-            $intDir = "x64\Release"
-            if (Test-Path $intDir) {
-              Write-Host "  Intermediate dir exists: $intDir"
-              Get-ChildItem $intDir | Select-Object -First 10 | ForEach-Object { Write-Host "    $($_.Name)" }
-            } else {
-              Write-Host "  Intermediate dir not found: $intDir"
-            }
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Error: Build failed (exit code: $LASTEXITCODE)"
             exit 1
           }
           
           Write-Host "Build successful"
-          
-          # Find build artifact
           Write-Host "Searching for build artifact..."
-          
-          $searchPaths = @(
-            "..\output\stretch_v2.aex",
-            "x64\Release\stretch_v2.aex",
-            "Release\stretch_v2.aex",
-            ".\stretch_v2.aex",
-            "x64\Release\Stretch.aex",
-            "..\output\Stretch.aex",
-            "Release\Stretch.aex",
-            ".\Stretch.aex"
-          )
-          
+          $searchPaths = @("x64\Release\Stretch.aex", "..\output\Stretch.aex", "Release\Stretch.aex", ".\Stretch.aex")
           $aexPath = $null
           foreach ($path in $searchPaths) {
             if (Test-Path $path) {
@@ -857,20 +515,19 @@ jobs:
           }
           
           if (-not $aexPath) {
-            $aexPath = Get-ChildItem -Path . -Filter "*.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $aexPath = Get-ChildItem -Path . -Filter "Stretch.aex" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           }
           
           if ($aexPath) {
             $artifactsDir = "${{ github.workspace }}\artifacts"
             New-Item -ItemType Directory -Path $artifactsDir -Force | Out-Null
-            $destPath = Join-Path $artifactsDir "stretch_v2.aex"
-            Copy-Item -Path $aexPath.FullName -Destination $destPath -Force
-            Write-Host "Artifact copied: $destPath"
+            Copy-Item -Path $aexPath.FullName -Destination $artifactsDir -Force
+            Write-Host "Artifact copied: $artifactsDir\Stretch.aex"
           } else {
             Write-Host "Error: Build artifact not found"
-            Get-ChildItem -Recurse -Depth 3 | Where-Object { $_.Extension -eq ".aex" -or $_.Name -like "*.obj" } | Select-Object FullName | Format-Table -AutoSize
             exit 1
           }
+
       - name: Verify exported entry points (Windows)
         if: matrix.platform == 'win'
         shell: pwsh
@@ -881,7 +538,7 @@ jobs:
             exit 1
           }
           $dumpbinPath = $dumpbinCmd.Source
-          $artifactPath = Join-Path "${{ github.workspace }}" "artifacts\stretch_v2.aex"
+          $artifactPath = Join-Path "${{ github.workspace }}" "artifacts\Stretch.aex"
           if (-not (Test-Path $artifactPath)) {
             Write-Host "::error::Artifact not found at $artifactPath"
             exit 1
@@ -900,7 +557,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Stretch-${{ matrix.platform }}
+          name: Ae_Stretch-${{ matrix.platform }}
           path: artifacts/
           retention-days: 30
           if-no-files-found: error
