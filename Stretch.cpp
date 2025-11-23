@@ -146,8 +146,8 @@ static inline Pixel SampleBilinear(const A_u_char *base_ptr,
 
     const int x0 = static_cast<int>(xf);
     const int y0 = static_cast<int>(yf);
-    const int x1 = std::min(x0 + 1, width - 1);
-    const int y1 = std::min(y0 + 1, height - 1);
+    const int x1 = (std::min)(x0 + 1, width - 1);
+    const int y1 = (std::min)(y0 + 1, height - 1);
 
     const float tx = xf - static_cast<float>(x0);
     const float ty = yf - static_cast<float>(y0);
