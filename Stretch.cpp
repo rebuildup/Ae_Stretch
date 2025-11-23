@@ -392,8 +392,8 @@ PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
     result = PF_REGISTER_EFFECT_EXT2(
         inPtr,
         inPluginDataCallBackPtr,
-        "stretch_v2", // Name
-        "361do stretch_v2", // Match Name
+        "Stretch", // Name
+        "361do Stretch", // Match Name
         "361do_plugins", // Category
         AE_RESERVED_INFO,
         "EffectMain",
