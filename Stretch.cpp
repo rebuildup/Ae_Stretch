@@ -4,6 +4,8 @@
 #include <cmath>
 #include <limits>
 #include <vector>
+#include <thread>
+#include <cstring>
 
 // -----------------------------------------------------------------------------
 // UI / boilerplate
@@ -12,6 +14,9 @@
 static PF_Err
 About(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)params;
+    (void)output;
+
     AEGP_SuiteHandler suites(in_data->pica_basicP);
     suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg,
                                           "%s v%d.%d\r%s",
@@ -25,6 +30,10 @@ About(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerD
 static PF_Err
 GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)in_data;
+    (void)params;
+    (void)output;
+
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
     // Support 16-bit (Deep Color), Multi-Frame Rendering
     out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE | PF_OutFlag_PIX_INDEPENDENT;
@@ -35,11 +44,19 @@ GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_
 static PF_Err
 FrameSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)in_data;
+    (void)out_data;
+    (void)params;
+    (void)output;
     return PF_Err_NONE;
 }
 
 static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)in_data;
+    (void)params;
+    (void)output;
+
     PF_Err err = PF_Err_NONE;
     PF_ParamDef def;
 
@@ -78,7 +95,7 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
         DIRECTION_DISK_ID);
 
     out_data->num_params = STRETCH_NUM_PARAMS;
-    return PF_Err_NONE;
+    return err;
 }
 
 
@@ -166,22 +183,329 @@ static inline Pixel SampleBilinear(const A_u_char *base_ptr,
     const Pixel &p01 = row1[x0];
     const Pixel &p11 = row1[x1];
 
-    // Bilinear interpolation
-    // f(x,y) = (1-tx)(1-ty)p00 + tx(1-ty)p10 + (1-tx)ty*p01 + tx*ty*p11
-    // Optimized: lerp(lerp(p00, p10, tx), lerp(p01, p11, tx), ty)
-
     auto lerp = [](float a, float b, float t) { return a + (b - a) * t; };
 
     Pixel result;
-    result.alpha = PixelTraits<Pixel>::FromFloat(lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.alpha), PixelTraits<Pixel>::ToFloat(p10.alpha), tx),
-                                                      lerp(PixelTraits<Pixel>::ToFloat(p01.alpha), PixelTraits<Pixel>::ToFloat(p11.alpha), tx), ty));
-    result.red = PixelTraits<Pixel>::FromFloat(lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.red), PixelTraits<Pixel>::ToFloat(p10.red), tx),
-                                                    lerp(PixelTraits<Pixel>::ToFloat(p01.red), PixelTraits<Pixel>::ToFloat(p11.red), tx), ty));
-    result.green = PixelTraits<Pixel>::FromFloat(lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.green), PixelTraits<Pixel>::ToFloat(p10.green), tx),
-                                                      lerp(PixelTraits<Pixel>::ToFloat(p01.green), PixelTraits<Pixel>::ToFloat(p11.green), tx), ty));
-    result.blue = PixelTraits<Pixel>::FromFloat(lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.blue), PixelTraits<Pixel>::ToFloat(p10.blue), tx),
-                                                     lerp(PixelTraits<Pixel>::ToFloat(p01.blue), PixelTraits<Pixel>::ToFloat(p11.blue), tx), ty));
+    result.alpha = PixelTraits<Pixel>::FromFloat(
+        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.alpha), PixelTraits<Pixel>::ToFloat(p10.alpha), tx),
+            lerp(PixelTraits<Pixel>::ToFloat(p01.alpha), PixelTraits<Pixel>::ToFloat(p11.alpha), tx), ty));
+    result.red = PixelTraits<Pixel>::FromFloat(
+        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.red), PixelTraits<Pixel>::ToFloat(p10.red), tx),
+            lerp(PixelTraits<Pixel>::ToFloat(p01.red), PixelTraits<Pixel>::ToFloat(p11.red), tx), ty));
+    result.green = PixelTraits<Pixel>::FromFloat(
+        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.green), PixelTraits<Pixel>::ToFloat(p10.green), tx),
+            lerp(PixelTraits<Pixel>::ToFloat(p01.green), PixelTraits<Pixel>::ToFloat(p11.green), tx), ty));
+    result.blue = PixelTraits<Pixel>::FromFloat(
+        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.blue), PixelTraits<Pixel>::ToFloat(p10.blue), tx),
+            lerp(PixelTraits<Pixel>::ToFloat(p01.blue), PixelTraits<Pixel>::ToFloat(p11.blue), tx), ty));
     return result;
+}
+
+// -----------------------------------------------------------------------------
+// Stretch rendering helpers
+// -----------------------------------------------------------------------------
+
+template <typename Pixel>
+struct StretchRenderContext
+{
+    const A_u_char *input_base;
+    A_u_char *output_base;
+    A_long input_rowbytes;
+    A_long output_rowbytes;
+    int width;
+    int height;
+    int input_width;
+    int input_height;
+
+    // Geometry
+    float anchor_x;
+    float anchor_y;
+    float effective_shift;
+    float shift_vec_x;
+    float shift_vec_y;
+    float perp_x;
+    float perp_y;
+    float para_x;
+    float para_y;
+};
+
+template <typename Pixel>
+static inline void ProcessRowsBoth(const StretchRenderContext<Pixel> &ctx, int start_y, int end_y)
+{
+    const float eff = ctx.effective_shift;
+    const float shift_vec_x = ctx.shift_vec_x;
+    const float shift_vec_y = ctx.shift_vec_y;
+    const float perp_x = ctx.perp_x;
+    const float perp_y = ctx.perp_y;
+    const float para_x = ctx.para_x;
+    const float para_y = ctx.para_y;
+    const float anchor_x_f = ctx.anchor_x;
+    const float anchor_y_f = ctx.anchor_y;
+
+    for (int y = start_y; y < end_y; ++y) {
+        const float yf = static_cast<float>(y);
+        const float dy = yf - anchor_y_f;
+
+        const float dx0 = -anchor_x_f;
+        const float dxN = static_cast<float>(ctx.width - 1) - anchor_x_f;
+
+        const float base_perp = dy * perp_y;
+        const float dist0 = dx0 * perp_x + base_perp;
+        const float distN = dxN * perp_x + base_perp;
+
+        const float row_min = (std::min)(dist0, distN);
+        const float row_max = (std::max)(dist0, distN);
+
+        const float base_para = dy * para_y;
+        float proj_len = dx0 * para_x + base_para;
+
+        float sample_x = 0.0f;
+        const float sample_y = yf;
+
+        Pixel *out_row = reinterpret_cast<Pixel *>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
+
+        // Entire row is on the negative side beyond the gap -> all pixels shift in +direction
+        if (row_max <= -eff) {
+            for (int x = 0; x < ctx.width; ++x) {
+                const float sx = sample_x + shift_vec_x;
+                const float sy = sample_y + shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                sample_x += 1.0f;
+            }
+            continue;
+        }
+
+        // Entire row is on the positive side beyond the gap -> all pixels shift in -direction
+        if (row_min >= eff) {
+            for (int x = 0; x < ctx.width; ++x) {
+                const float sx = sample_x - shift_vec_x;
+                const float sy = sample_y - shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                sample_x += 1.0f;
+            }
+            continue;
+        }
+
+        // Entire row is inside the gap -> border sampling only
+        if (row_min > -eff && row_max < eff) {
+            for (int x = 0; x < ctx.width; ++x) {
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                proj_len += para_x;
+            }
+            continue;
+        }
+
+        // General case: mix of negative side, gap, and positive side
+        float dist = dist0;
+        proj_len = dx0 * para_x + base_para;
+
+        for (int x = 0; x < ctx.width; ++x) {
+            float sx = sample_x;
+            float sy = sample_y;
+
+            if (dist > eff) {
+                sx -= shift_vec_x;
+                sy -= shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+            } else if (dist < -eff) {
+                sx += shift_vec_x;
+                sy += shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+            } else {
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+            }
+
+            sample_x += 1.0f;
+            dist += perp_x;
+            proj_len += para_x;
+        }
+    }
+}
+
+template <typename Pixel>
+static inline void ProcessRowsForward(const StretchRenderContext<Pixel> &ctx, int start_y, int end_y)
+{
+    const float eff = ctx.effective_shift;
+    const float shift_vec_x = ctx.shift_vec_x;
+    const float shift_vec_y = ctx.shift_vec_y;
+    const float perp_x = ctx.perp_x;
+    const float perp_y = ctx.perp_y;
+    const float para_x = ctx.para_x;
+    const float para_y = ctx.para_y;
+    const float anchor_x_f = ctx.anchor_x;
+    const float anchor_y_f = ctx.anchor_y;
+
+    for (int y = start_y; y < end_y; ++y) {
+        const float yf = static_cast<float>(y);
+        const float dy = yf - anchor_y_f;
+
+        const float dx0 = -anchor_x_f;
+        const float dxN = static_cast<float>(ctx.width - 1) - anchor_x_f;
+
+        const float base_perp = dy * perp_y;
+        const float dist0 = dx0 * perp_x + base_perp;
+        const float distN = dxN * perp_x + base_perp;
+
+        const float row_min = (std::min)(dist0, distN);
+        const float row_max = (std::max)(dist0, distN);
+
+        Pixel *out_row = reinterpret_cast<Pixel *>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
+        const Pixel *in_row = reinterpret_cast<const Pixel *>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
+
+        const float base_para = dy * para_y;
+        float proj_len = dx0 * para_x + base_para;
+
+        float sample_x = 0.0f;
+        const float sample_y = yf;
+
+        // Entire row is behind the line (dist < 0) -> unchanged
+        if (row_max < 0.0f) {
+            std::memcpy(out_row, in_row, sizeof(Pixel) * ctx.width);
+            continue;
+        }
+
+        // Entire row is fully shifted (dist >= eff)
+        if (row_min >= eff) {
+            for (int x = 0; x < ctx.width; ++x) {
+                const float sx = sample_x - shift_vec_x;
+                const float sy = sample_y - shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                sample_x += 1.0f;
+            }
+            continue;
+        }
+
+        // Entire row is within gap: 0 <= dist < eff -> border only
+        if (row_min >= 0.0f && row_max < eff) {
+            for (int x = 0; x < ctx.width; ++x) {
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                proj_len += para_x;
+            }
+            continue;
+        }
+
+        // General case
+        float dist = dist0;
+        proj_len = dx0 * para_x + base_para;
+
+        for (int x = 0; x < ctx.width; ++x) {
+            if (dist < 0.0f) {
+                // Unchanged
+                out_row[x] = in_row[x];
+            } else if (dist < eff) {
+                // Border
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+            } else {
+                // Shifted
+                const float sx = sample_x - shift_vec_x;
+                const float sy = sample_y - shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+            }
+
+            sample_x += 1.0f;
+            dist += perp_x;
+            proj_len += para_x;
+        }
+    }
+}
+
+template <typename Pixel>
+static inline void ProcessRowsBackward(const StretchRenderContext<Pixel> &ctx, int start_y, int end_y)
+{
+    const float eff = ctx.effective_shift;
+    const float shift_vec_x = ctx.shift_vec_x;
+    const float shift_vec_y = ctx.shift_vec_y;
+    const float perp_x = ctx.perp_x;
+    const float perp_y = ctx.perp_y;
+    const float para_x = ctx.para_x;
+    const float para_y = ctx.para_y;
+    const float anchor_x_f = ctx.anchor_x;
+    const float anchor_y_f = ctx.anchor_y;
+
+    for (int y = start_y; y < end_y; ++y) {
+        const float yf = static_cast<float>(y);
+        const float dy = yf - anchor_y_f;
+
+        const float dx0 = -anchor_x_f;
+        const float dxN = static_cast<float>(ctx.width - 1) - anchor_x_f;
+
+        const float base_perp = dy * perp_y;
+        const float dist0 = dx0 * perp_x + base_perp;
+        const float distN = dxN * perp_x + base_perp;
+
+        const float row_min = (std::min)(dist0, distN);
+        const float row_max = (std::max)(dist0, distN);
+
+        Pixel *out_row = reinterpret_cast<Pixel *>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
+        const Pixel *in_row = reinterpret_cast<const Pixel *>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
+
+        const float base_para = dy * para_y;
+        float proj_len = dx0 * para_x + base_para;
+
+        float sample_x = 0.0f;
+        const float sample_y = yf;
+
+        // Entire row is in front of the line (dist > 0) -> unchanged
+        if (row_min > 0.0f) {
+            std::memcpy(out_row, in_row, sizeof(Pixel) * ctx.width);
+            continue;
+        }
+
+        // Entire row is fully shifted (dist <= -eff)
+        if (row_max <= -eff) {
+            for (int x = 0; x < ctx.width; ++x) {
+                const float sx = sample_x + shift_vec_x;
+                const float sy = sample_y + shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                sample_x += 1.0f;
+            }
+            continue;
+        }
+
+        // Entire row is within gap: -eff < dist <= 0 -> border only
+        if (row_min > -eff && row_max <= 0.0f) {
+            for (int x = 0; x < ctx.width; ++x) {
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                proj_len += para_x;
+            }
+            continue;
+        }
+
+        // General case
+        float dist = dist0;
+        proj_len = dx0 * para_x + base_para;
+
+        for (int x = 0; x < ctx.width; ++x) {
+            if (dist > 0.0f) {
+                // Unchanged
+                out_row[x] = in_row[x];
+            } else if (dist > -eff) {
+                // Border
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+            } else {
+                // Shifted
+                const float sx = sample_x + shift_vec_x;
+                const float sy = sample_y + shift_vec_y;
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+            }
+
+            sample_x += 1.0f;
+            dist += perp_x;
+            proj_len += para_x;
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -191,14 +515,18 @@ static inline Pixel SampleBilinear(const A_u_char *base_ptr,
 template <typename Pixel>
 static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
-    PF_EffectWorld *input = &params[0]->u.ld;
+    (void)out_data;
+
+    PF_EffectWorld *input = &params[STRETCH_INPUT]->u.ld;
 
     const int width = output->width;
     const int height = output->height;
     const int input_width = input->width;
     const int input_height = input->height;
 
-    if (width <= 0 || height <= 0) return PF_Err_NONE;
+    if (width <= 0 || height <= 0) {
+        return PF_Err_NONE;
+    }
 
     const A_u_char *input_base = reinterpret_cast<const A_u_char *>(input->data);
     A_u_char *output_base = reinterpret_cast<A_u_char *>(output->data);
@@ -217,12 +545,12 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     const float downsample_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
     const float downsample_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
     const float downsample = std::min(downsample_x, downsample_y);
-    
+
     // Effective shift in pixels
     float effective_shift = (downsample > 0.0f) ? (shift_amount / downsample) : shift_amount;
 
     if (std::abs(effective_shift) < 0.01f) {
-        return PF_COPY(input, output, NULL, NULL);
+        return PF_COPY(input, output, nullptr, nullptr);
     }
 
     // Direction adjustment
@@ -231,20 +559,12 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     }
 
     // Precompute vectors
-    // Perpendicular vector (direction of shift)
-    // Angle 0 means shift up (y decreases). Wait, standard AE angle 0 is usually up or right?
-    // Let's assume standard math: 0 is right (x+), 90 is down (y+).
-    // But usually "Angle" param in AE: 0 is Up (0 degrees).
-    // Let's stick to the previous implementation's logic:
-    // perpendicular_x = -sin(angle), perpendicular_y = cos(angle)
-    // This corresponds to a vector rotated 90 degrees from (cos, sin).
-    
     const float sn = std::sin(angle_rad);
     const float cs = std::cos(angle_rad);
-    
+
     const float perp_x = -sn;
     const float perp_y = cs;
-    
+
     const float shift_vec_x = perp_x * effective_shift;
     const float shift_vec_y = perp_y * effective_shift;
 
@@ -252,129 +572,77 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     const float para_x = cs;
     const float para_y = sn;
 
-    // Process all rows
-    for (int y = 0; y < height; ++y) {
-        Pixel *out_row = reinterpret_cast<Pixel *>(output_base + y * output_rowbytes);
-        
-        // Precompute row constants
-        const float dy = static_cast<float>(y - anchor_y);
-        
-        for (int x = 0; x < width; ++x) {
-                const float dx = static_cast<float>(x - anchor_x);
-                
-                // Calculate signed distance from the line passing through anchor point
-                // Line equation: dot(pos - anchor, perp) = distance
-                // But we want distance along the perpendicular vector.
-                // dist = dx * perp_x + dy * perp_y
-                float dist = dx * perp_x + dy * perp_y;
+    StretchRenderContext<Pixel> ctx{};
+    ctx.input_base = input_base;
+    ctx.output_base = output_base;
+    ctx.input_rowbytes = input_rowbytes;
+    ctx.output_rowbytes = output_rowbytes;
+    ctx.width = width;
+    ctx.height = height;
+    ctx.input_width = input_width;
+    ctx.input_height = input_height;
+    ctx.anchor_x = static_cast<float>(anchor_x);
+    ctx.anchor_y = static_cast<float>(anchor_y);
+    ctx.effective_shift = effective_shift;
+    ctx.shift_vec_x = shift_vec_x;
+    ctx.shift_vec_y = shift_vec_y;
+    ctx.perp_x = perp_x;
+    ctx.perp_y = perp_y;
+    ctx.para_x = para_x;
+    ctx.para_y = para_y;
 
-                float sample_x = static_cast<float>(x);
-                float sample_y = static_cast<float>(y);
-                bool use_border = false;
+    const int max_threads = std::max(1u, std::thread::hardware_concurrency());
+    const int height_clamped = std::max(height, 1);
+    const int num_threads = std::min(max_threads, height_clamped);
+    const int rows_per_thread = (height_clamped + num_threads - 1) / num_threads;
 
-                // Logic:
-                // If dist > 0, we are on one side. If dist < 0, on the other.
-                // We want to shift pixels AWAY from the line? Or shift the image content?
-                // "Stretch" usually means splitting the image and moving parts apart.
-                // So we sample from (pos - shift) or (pos + shift).
-
-                if (direction == 1) { // Both
-                    // Split at dist=0.
-                    // Pixels with dist > 0 come from (pos - shift)
-                    // Pixels with dist < 0 come from (pos + shift)
-                    // Pixels in between (gap) are filled with border/stretched pixels?
-                    // Previous implementation: if abs(dist) < shift, use border.
-                    
-                    if (std::abs(dist) < effective_shift) {
-                        use_border = true;
-                    } else if (dist > 0) {
-                        sample_x -= shift_vec_x;
-                        sample_y -= shift_vec_y;
-                    } else {
-                        sample_x += shift_vec_x;
-                        sample_y += shift_vec_y;
-                    }
-                } else if (direction == 2) { // Forward
-                    // Split at dist=0? Or dist=shift?
-                    // Previous: if dist < shift, use border?
-                    // Forward usually means one side moves, other stays?
-                    // Let's follow previous logic:
-                    // if sd < shift, use border.
-                    // else sample - shift.
-                    // Wait, if dist < 0 (behind line), it stays?
-                    // Previous code:
-                    // if (sd < actual_shift_f) use_border = true;
-                    // else sample - shift;
-                    // This implies everything < shift is border? That seems wrong for "Forward".
-                    // Usually "Forward" means:
-                    // dist < 0: Unchanged (sample at x,y)
-                    // dist > 0: Shifted (sample at x-shift, y-shift)
-                    // Gap: 0 < dist < shift.
-                    
-                    if (dist < 0) {
-                        // Unchanged
-                    } else if (dist < effective_shift) {
-                        use_border = true;
-                    } else {
-                        sample_x -= shift_vec_x;
-                        sample_y -= shift_vec_y;
-                    }
-                } else if (direction == 3) { // Backward
-                    // dist > 0: Unchanged
-                    // dist < 0: Shifted (sample at x+shift, y+shift)
-                    // Gap: -shift < dist < 0
-                    
-                    if (dist > 0) {
-                        // Unchanged
-                    } else if (dist > -effective_shift) {
-                        use_border = true;
-                    } else {
-                        sample_x += shift_vec_x;
-                        sample_y += shift_vec_y;
-                    }
-                }
-
-                if (use_border) {
-                    // Sample from the "cut" line.
-                    // Project current point onto the line.
-                    // Projection = Anchor + dot(pos-anchor, para) * para
-                    float proj_len = dx * para_x + dy * para_y;
-                    float border_x = static_cast<float>(anchor_x) + proj_len * para_x;
-                    float border_y = static_cast<float>(anchor_y) + proj_len * para_y;
-                    
-                    out_row[x] = SampleBilinear<Pixel>(input_base, input_rowbytes, border_x, border_y, input_width, input_height);
-                } else {
-                    // Normal sampling
-                    out_row[x] = SampleBilinear<Pixel>(input_base, input_rowbytes, sample_x, sample_y, input_width, input_height);
-                }
-            }
+    auto worker = [&](int start_y, int end_y) {
+        if (direction == 1) {
+            ProcessRowsBoth(ctx, start_y, end_y);
+        } else if (direction == 2) {
+            ProcessRowsForward(ctx, start_y, end_y);
+        } else {
+            ProcessRowsBackward(ctx, start_y, end_y);
         }
+    };
+
+    if (num_threads <= 1 || height <= 1) {
+        worker(0, height);
+    } else {
+        std::vector<std::thread> threads;
+        threads.reserve(num_threads);
+        int start_y = 0;
+        for (int t = 0; t < num_threads; ++t) {
+            const int end_y = std::min(start_y + rows_per_thread, height);
+            if (start_y >= end_y) {
+                break;
+            }
+            threads.emplace_back(worker, start_y, end_y);
+            start_y = end_y;
+        }
+        for (auto &th : threads) {
+            th.join();
+        }
+    }
+
     return PF_Err_NONE;
 }
 
 static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
 {
+    (void)out_data;
+
     if (output->world_flags & PF_WorldFlag_DEEP) {
         if (PF_WORLD_IS_DEEP(output)) {
-             // 16-bit
-             return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
+            // 16-bit
+            return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
         }
     }
-    // Check for 32-bit float
-    // PF_WorldFlag_FLOAT is not standard in old SDKs, check rowbytes or flags2?
-    // Usually we check pixel format.
-    // Assuming PF_PixelFloat is used if rowbytes/width == 16 (128 bit) or similar?
-    // Actually, standard way is checking `in_data->appl_id` or `pixel_format`.
-    // But for this template, we'll assume:
-    // If deep flag is NOT set, it's 8-bit.
-    // If deep flag IS set, it could be 16-bit or 32-bit.
-    // We can check `pixel_format` in `PF_EffectWorld`.
-    
-    // Robust check:
+
     int bpp = (output->width > 0) ? (output->rowbytes / output->width) : 0;
-    if (bpp == sizeof(PF_PixelFloat)) {
+    if (bpp == static_cast<int>(sizeof(PF_PixelFloat))) {
         return RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
-    } else if (bpp == sizeof(PF_Pixel16)) {
+    } else if (bpp == static_cast<int>(sizeof(PF_Pixel16))) {
         return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
     } else {
         return RenderGeneric<PF_Pixel>(in_data, out_data, params, output);
@@ -388,11 +656,14 @@ PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
                                 const char *inHostName,
                                 const char *inHostVersion)
 {
+    (void)inHostName;
+    (void)inHostVersion;
+
     PF_Err result = PF_Err_INVALID_CALLBACK;
     result = PF_REGISTER_EFFECT_EXT2(
         inPtr,
         inPluginDataCallBackPtr,
-        "Stretch", // Name
+        "Stretch",       // Name
         "361do Stretch", // Match Name
         "361do_plugins", // Category
         AE_RESERVED_INFO,
@@ -409,17 +680,32 @@ PF_Err EffectMain(PF_Cmd cmd,
                   PF_LayerDef *output,
                   void *extra)
 {
+    (void)extra;
+
     PF_Err err = PF_Err_NONE;
     try {
         switch (cmd) {
-            case PF_Cmd_ABOUT: err = About(in_data, out_data, params, output); break;
-            case PF_Cmd_GLOBAL_SETUP: err = GlobalSetup(in_data, out_data, params, output); break;
-            case PF_Cmd_PARAMS_SETUP: err = ParamsSetup(in_data, out_data, params, output); break;
-            case PF_Cmd_RENDER: err = Render(in_data, out_data, params, output); break;
-            default: break;
+            case PF_Cmd_ABOUT:
+                err = About(in_data, out_data, params, output);
+                break;
+            case PF_Cmd_GLOBAL_SETUP:
+                err = GlobalSetup(in_data, out_data, params, output);
+                break;
+            case PF_Cmd_FRAME_SETUP:
+                err = FrameSetup(in_data, out_data, params, output);
+                break;
+            case PF_Cmd_PARAMS_SETUP:
+                err = ParamsSetup(in_data, out_data, params, output);
+                break;
+            case PF_Cmd_RENDER:
+                err = Render(in_data, out_data, params, output);
+                break;
+            default:
+                break;
         }
     } catch (...) {
         err = PF_Err_INTERNAL_STRUCT_DAMAGED;
     }
     return err;
 }
+
