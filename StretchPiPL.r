@@ -43,7 +43,11 @@ resource 'PiPL' (16000) {
 	},
 	
 	AE_Effect_Version {
-		STRETCH_VERSION
+		MAJOR_VERSION,
+		MINOR_VERSION,
+		BUG_VERSION,
+		STAGE_VERSION,
+		BUILD_VERSION
 	},
 	
 	AE_Effect_Info_Flags {
