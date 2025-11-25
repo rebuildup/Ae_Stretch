@@ -43,10 +43,10 @@ resource 'PiPL' (16000) {
 	},
 	
 	AE_Effect_Version {
-		MAJOR_VERSION,
-		MINOR_VERSION,
-		BUG_VERSION,
-		STAGE_VERSION,
+		(MAJOR_VERSION << 19) +
+		(MINOR_VERSION << 15) +
+		(BUG_VERSION   << 11) +
+		(STAGE_VERSION << 9)  +
 		BUILD_VERSION
 	},
 	
