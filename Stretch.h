@@ -16,29 +16,7 @@
 #endif
 #define STAGE_VERSION 0
 
-#ifndef PF_Vers_VERS_BITS
-#define PF_Vers_VERS_BITS 0x7L
-#define PF_Vers_VERS_SHIFT 19
-#define PF_Vers_VERS_HIGH_BITS 0xfL
-#define PF_Vers_VERS_HIGH_SHIFT 26
-#define PF_Vers_VERS_LOW_SHIFT 3
-#define PF_Vers_SUBVERS_BITS 0xfL
-#define PF_Vers_SUBVERS_SHIFT 15
-#define PF_Vers_BUGFIX_BITS 0xfL
-#define PF_Vers_BUGFIX_SHIFT 11
-#define PF_Vers_STAGE_BITS 0x3L
-#define PF_Vers_STAGE_SHIFT 9
-#define PF_Vers_BUILD_BITS 0x1ffL
-#define PF_Vers_BUILD_SHIFT 0
-#endif
-
-#define STRETCH_VERSION                                                                                    \
-    (((((MAJOR_VERSION >> PF_Vers_VERS_LOW_SHIFT) & PF_Vers_VERS_HIGH_BITS) << PF_Vers_VERS_HIGH_SHIFT)) | \
-     ((((MAJOR_VERSION) & PF_Vers_VERS_BITS) << PF_Vers_VERS_SHIFT)) |                                     \
-     ((((MINOR_VERSION) & PF_Vers_SUBVERS_BITS) << PF_Vers_SUBVERS_SHIFT)) |                               \
-     ((((BUG_VERSION) & PF_Vers_BUGFIX_BITS) << PF_Vers_BUGFIX_SHIFT)) |                                   \
-     ((((STAGE_VERSION) & PF_Vers_STAGE_BITS) << PF_Vers_STAGE_SHIFT)) |                                   \
-     ((((BUILD_VERSION) & PF_Vers_BUILD_BITS) << PF_Vers_BUILD_SHIFT)))
+#define STRETCH_VERSION PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION)
 
 #else
 
