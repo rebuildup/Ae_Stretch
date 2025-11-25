@@ -16,14 +16,14 @@ BEGIN
 	"MIB8",
 	"eman",
 	0, 0x0,
-	12, 0x0,
-	"\x09Stretch\0\0", 
+	8, 0x0,
+	"\x07Stretch", 
 
 	"MIB8",
 	"gtac", 
 	0, 0x0,
-	16, 0x0,
-	"\x0D361do_plugins\0\0", 
+	8, 0x0,
+	"\x07Stretch", 
 
 	"MIB8",
 	"4668", 
@@ -47,7 +47,7 @@ BEGIN
 	0x65564552L, 
 	0L,
 	4L
-	557057L, 
+	593921L, 
 
 	"MIB8",
 	0x65494E46L, 
@@ -59,19 +59,19 @@ BEGIN
 	"OLGe", 
 	0L,
 	4L,
-	33554432L, 
+	33555456L, 
 
 	"MIB8",
 	"2LGe", 
 	0L,
 	4L,
-	134217729L, 
+	134217728L, 
 
 	"MIB8",
 	"ANMe",
 	0, 0x0,
 	16, 0x0,
-	"\x0F361do Stretch", 
+	"\x0D361do Stretch\0\0", 
 
 	"MIB8",
 	0x6165464CL, 
@@ -82,8 +82,8 @@ BEGIN
 	"MIB8",
 	"LRUe",
 	0, 0x0,
-	28, 0x0,
-	"\x19https://x.com/361do_sleep\0\0", 
+	40, 0x0,
+	"\x27https://github.com/rebuildup/Ae_Stretch", 
 
 
 END

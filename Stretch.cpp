@@ -12,23 +12,23 @@
 // -----------------------------------------------------------------------------
 
 static PF_Err
-About(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
+About(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)params;
     (void)output;
 
     AEGP_SuiteHandler suites(in_data->pica_basicP);
     suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg,
-                                          "%s v%d.%d\r%s",
-                                          STR(StrID_Name),
-                                          MAJOR_VERSION,
-                                          MINOR_VERSION,
-                                          STR(StrID_Description));
+        "%s v%d.%d\r%s",
+        STR(StrID_Name),
+        MAJOR_VERSION,
+        MINOR_VERSION,
+        STR(StrID_Description));
     return PF_Err_NONE;
 }
 
 static PF_Err
-GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
+GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)in_data;
     (void)params;
@@ -42,7 +42,7 @@ GlobalSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_
 }
 
 static PF_Err
-FrameSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
+FrameSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)in_data;
     (void)out_data;
@@ -51,7 +51,7 @@ FrameSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_L
     return PF_Err_NONE;
 }
 
-static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
+static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)in_data;
     (void)params;
@@ -77,9 +77,9 @@ static PF_Err ParamsSetup(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef 
     AEFX_CLR_STRUCT(def);
 
     PF_ADD_POINT("Anchor Point",
-                 50, 50,
-                 false,
-                 ANCHOR_POINT_DISK_ID);
+        50, 50,
+        false,
+        ANCHOR_POINT_DISK_ID);
 
     AEFX_CLR_STRUCT(def);
 
@@ -156,12 +156,12 @@ struct PixelTraits<PF_PixelFloat>
 // -----------------------------------------------------------------------------
 
 template <typename Pixel>
-static inline Pixel SampleBilinear(const A_u_char *base_ptr,
-                                   A_long rowbytes,
-                                   float xf,
-                                   float yf,
-                                   int width,
-                                   int height)
+static inline Pixel SampleBilinear(const A_u_char* base_ptr,
+    A_long rowbytes,
+    float xf,
+    float yf,
+    int width,
+    int height)
 {
     // Clamp coordinates to valid range
     xf = ClampScalar(xf, 0.0f, static_cast<float>(width - 1));
@@ -175,13 +175,13 @@ static inline Pixel SampleBilinear(const A_u_char *base_ptr,
     const float tx = xf - static_cast<float>(x0);
     const float ty = yf - static_cast<float>(y0);
 
-    const Pixel *row0 = reinterpret_cast<const Pixel *>(base_ptr + static_cast<A_long>(y0) * rowbytes);
-    const Pixel *row1 = reinterpret_cast<const Pixel *>(base_ptr + static_cast<A_long>(y1) * rowbytes);
+    const Pixel* row0 = reinterpret_cast<const Pixel*>(base_ptr + static_cast<A_long>(y0) * rowbytes);
+    const Pixel* row1 = reinterpret_cast<const Pixel*>(base_ptr + static_cast<A_long>(y1) * rowbytes);
 
-    const Pixel &p00 = row0[x0];
-    const Pixel &p10 = row0[x1];
-    const Pixel &p01 = row1[x0];
-    const Pixel &p11 = row1[x1];
+    const Pixel& p00 = row0[x0];
+    const Pixel& p10 = row0[x1];
+    const Pixel& p01 = row1[x0];
+    const Pixel& p11 = row1[x1];
 
     auto lerp = [](float a, float b, float t) { return a + (b - a) * t; };
 
@@ -208,8 +208,8 @@ static inline Pixel SampleBilinear(const A_u_char *base_ptr,
 template <typename Pixel>
 struct StretchRenderContext
 {
-    const A_u_char *input_base;
-    A_u_char *output_base;
+    const A_u_char* input_base;
+    A_u_char* output_base;
     A_long input_rowbytes;
     A_long output_rowbytes;
     int width;
@@ -230,7 +230,7 @@ struct StretchRenderContext
 };
 
 template <typename Pixel>
-static inline void ProcessRowsBoth(const StretchRenderContext<Pixel> &ctx, int start_y, int end_y)
+static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int start_y, int end_y)
 {
     const float eff = ctx.effective_shift;
     const float shift_vec_x = ctx.shift_vec_x;
@@ -262,7 +262,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel> &ctx, int s
         float sample_x = 0.0f;
         const float sample_y = yf;
 
-        Pixel *out_row = reinterpret_cast<Pixel *>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
+        Pixel* out_row = reinterpret_cast<Pixel*>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
 
         // Entire row is on the negative side beyond the gap -> all pixels shift in +direction
         if (row_max <= -eff) {
@@ -309,11 +309,13 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel> &ctx, int s
                 sx -= shift_vec_x;
                 sy -= shift_vec_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
-            } else if (dist < -eff) {
+            }
+            else if (dist < -eff) {
                 sx += shift_vec_x;
                 sy += shift_vec_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
-            } else {
+            }
+            else {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
@@ -327,7 +329,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel> &ctx, int s
 }
 
 template <typename Pixel>
-static inline void ProcessRowsForward(const StretchRenderContext<Pixel> &ctx, int start_y, int end_y)
+static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, int start_y, int end_y)
 {
     const float eff = ctx.effective_shift;
     const float shift_vec_x = ctx.shift_vec_x;
@@ -353,8 +355,8 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel> &ctx, in
         const float row_min = (std::min)(dist0, distN);
         const float row_max = (std::max)(dist0, distN);
 
-        Pixel *out_row = reinterpret_cast<Pixel *>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
-        const Pixel *in_row = reinterpret_cast<const Pixel *>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
+        Pixel* out_row = reinterpret_cast<Pixel*>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
+        const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
 
         const float base_para = dy * para_y;
         float proj_len = dx0 * para_x + base_para;
@@ -398,12 +400,14 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel> &ctx, in
             if (dist < 0.0f) {
                 // Unchanged
                 out_row[x] = in_row[x];
-            } else if (dist < eff) {
+            }
+            else if (dist < eff) {
                 // Border
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-            } else {
+            }
+            else {
                 // Shifted
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
@@ -418,7 +422,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel> &ctx, in
 }
 
 template <typename Pixel>
-static inline void ProcessRowsBackward(const StretchRenderContext<Pixel> &ctx, int start_y, int end_y)
+static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, int start_y, int end_y)
 {
     const float eff = ctx.effective_shift;
     const float shift_vec_x = ctx.shift_vec_x;
@@ -444,8 +448,8 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel> &ctx, i
         const float row_min = (std::min)(dist0, distN);
         const float row_max = (std::max)(dist0, distN);
 
-        Pixel *out_row = reinterpret_cast<Pixel *>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
-        const Pixel *in_row = reinterpret_cast<const Pixel *>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
+        Pixel* out_row = reinterpret_cast<Pixel*>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
+        const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
 
         const float base_para = dy * para_y;
         float proj_len = dx0 * para_x + base_para;
@@ -489,12 +493,14 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel> &ctx, i
             if (dist > 0.0f) {
                 // Unchanged
                 out_row[x] = in_row[x];
-            } else if (dist > -eff) {
+            }
+            else if (dist > -eff) {
                 // Border
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-            } else {
+            }
+            else {
                 // Shifted
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
@@ -513,11 +519,11 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel> &ctx, i
 // -----------------------------------------------------------------------------
 
 template <typename Pixel>
-static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
+static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)out_data;
 
-    PF_EffectWorld *input = &params[STRETCH_INPUT]->u.ld;
+    PF_EffectWorld* input = &params[STRETCH_INPUT]->u.ld;
 
     const int width = output->width;
     const int height = output->height;
@@ -528,8 +534,8 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
         return PF_Err_NONE;
     }
 
-    const A_u_char *input_base = reinterpret_cast<const A_u_char *>(input->data);
-    A_u_char *output_base = reinterpret_cast<A_u_char *>(output->data);
+    const A_u_char* input_base = reinterpret_cast<const A_u_char*>(input->data);
+    A_u_char* output_base = reinterpret_cast<A_u_char*>(output->data);
     const A_long input_rowbytes = input->rowbytes;
     const A_long output_rowbytes = output->rowbytes;
 
@@ -599,16 +605,19 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     auto worker = [&](int start_y, int end_y) {
         if (direction == 1) {
             ProcessRowsBoth(ctx, start_y, end_y);
-        } else if (direction == 2) {
+        }
+        else if (direction == 2) {
             ProcessRowsForward(ctx, start_y, end_y);
-        } else {
+        }
+        else {
             ProcessRowsBackward(ctx, start_y, end_y);
         }
-    };
+        };
 
     if (num_threads <= 1 || height <= 1) {
         worker(0, height);
-    } else {
+    }
+    else {
         std::vector<std::thread> threads;
         threads.reserve(num_threads);
         int start_y = 0;
@@ -620,7 +629,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
             threads.emplace_back(worker, start_y, end_y);
             start_y = end_y;
         }
-        for (auto &th : threads) {
+        for (auto& th : threads) {
             th.join();
         }
     }
@@ -628,7 +637,7 @@ static PF_Err RenderGeneric(PF_InData *in_data, PF_OutData *out_data, PF_ParamDe
     return PF_Err_NONE;
 }
 
-static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *params[], PF_LayerDef *output)
+static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)out_data;
 
@@ -642,19 +651,21 @@ static PF_Err Render(PF_InData *in_data, PF_OutData *out_data, PF_ParamDef *para
     int bpp = (output->width > 0) ? (output->rowbytes / output->width) : 0;
     if (bpp == static_cast<int>(sizeof(PF_PixelFloat))) {
         return RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
-    } else if (bpp == static_cast<int>(sizeof(PF_Pixel16))) {
+    }
+    else if (bpp == static_cast<int>(sizeof(PF_Pixel16))) {
         return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
-    } else {
+    }
+    else {
         return RenderGeneric<PF_Pixel>(in_data, out_data, params, output);
     }
 }
 
 extern "C" DllExport
 PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
-                                PF_PluginDataCB2 inPluginDataCallBackPtr,
-                                SPBasicSuite *inSPBasicSuitePtr,
-                                const char *inHostName,
-                                const char *inHostVersion)
+    PF_PluginDataCB2 inPluginDataCallBackPtr,
+    SPBasicSuite* inSPBasicSuitePtr,
+    const char* inHostName,
+    const char* inHostVersion)
 {
     (void)inHostName;
     (void)inHostVersion;
@@ -674,36 +685,37 @@ PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
 
 extern "C" DllExport
 PF_Err EffectMain(PF_Cmd cmd,
-                  PF_InData *in_data,
-                  PF_OutData *out_data,
-                  PF_ParamDef *params[],
-                  PF_LayerDef *output,
-                  void *extra)
+    PF_InData* in_data,
+    PF_OutData* out_data,
+    PF_ParamDef* params[],
+    PF_LayerDef* output,
+    void* extra)
 {
     (void)extra;
 
     PF_Err err = PF_Err_NONE;
     try {
         switch (cmd) {
-            case PF_Cmd_ABOUT:
-                err = About(in_data, out_data, params, output);
-                break;
-            case PF_Cmd_GLOBAL_SETUP:
-                err = GlobalSetup(in_data, out_data, params, output);
-                break;
-            case PF_Cmd_FRAME_SETUP:
-                err = FrameSetup(in_data, out_data, params, output);
-                break;
-            case PF_Cmd_PARAMS_SETUP:
-                err = ParamsSetup(in_data, out_data, params, output);
-                break;
-            case PF_Cmd_RENDER:
-                err = Render(in_data, out_data, params, output);
-                break;
-            default:
-                break;
+        case PF_Cmd_ABOUT:
+            err = About(in_data, out_data, params, output);
+            break;
+        case PF_Cmd_GLOBAL_SETUP:
+            err = GlobalSetup(in_data, out_data, params, output);
+            break;
+        case PF_Cmd_FRAME_SETUP:
+            err = FrameSetup(in_data, out_data, params, output);
+            break;
+        case PF_Cmd_PARAMS_SETUP:
+            err = ParamsSetup(in_data, out_data, params, output);
+            break;
+        case PF_Cmd_RENDER:
+            err = Render(in_data, out_data, params, output);
+            break;
+        default:
+            break;
         }
-    } catch (...) {
+    }
+    catch (...) {
         err = PF_Err_INTERNAL_STRUCT_DAMAGED;
     }
     return err;

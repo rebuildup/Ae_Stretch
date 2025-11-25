@@ -40,7 +40,7 @@
 #define BUG_VERSION 0
 #define STAGE_VERSION PF_Stage_DEVELOP
 #define BUILD_VERSION 1
-#define NAME "stretch_v2"
+#define NAME "Stretch"
 #define DESCRIPTION "Stretches pixels based on an anchor point and angle"
 
 // String IDs

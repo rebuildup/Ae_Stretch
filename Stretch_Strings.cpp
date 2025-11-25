@@ -8,7 +8,7 @@ typedef struct
 
 TableString g_strs[StrID_NUMTYPES] = {
 	StrID_NONE, "",
-	StrID_Name, "stretch_v2",
+	StrID_Name, "Stretch",
 	StrID_Description, "Stretches pixels based on an anchor point and angle"};
 
 char *GetStringPtr(int strNum)

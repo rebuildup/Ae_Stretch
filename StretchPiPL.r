@@ -12,7 +12,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		Name {
-			"Stretch_v2"
+			"Stretch"
 		},
 		
 		Category {

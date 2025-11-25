@@ -1,12 +1,36 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "D:\\1_projects\\AfterEffects\\plugin\\SDK\\Template\\Ae_Stretch\\Win\\",
-  "Documents": [],
+  "WorkspaceRootPath": "D:\\1_projects\\AfterEffects\\plugin\\SDK\\Template\\Stretch\\Win\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{2C8DED3E-111D-4272-A54A-F1865F02A90E}|Stretch.vcxproj|D:\\1_projects\\AfterEffects\\plugin\\SDK\\Template\\Stretch\\Stretch.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    }
+  ],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
       "VerticalTabListWidth": 256,
-      "DocumentGroups": []
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "Stretch.cpp",
+              "DocumentMoniker": "D:\\1_projects\\AfterEffects\\plugin\\SDK\\Template\\Stretch\\Stretch.cpp",
+              "RelativeDocumentMoniker": "..\\Stretch.cpp",
+              "ToolTip": "D:\\1_projects\\AfterEffects\\plugin\\SDK\\Template\\Stretch\\Stretch.cpp",
+              "RelativeToolTip": "..\\Stretch.cpp",
+              "ViewState": "AgIAAIUCAAAAAAAAAADgv7UCAAAQAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
+              "WhenOpened": "2025-11-25T11:19:44.335Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
     }
   ]
 }
