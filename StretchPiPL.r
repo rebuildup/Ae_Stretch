@@ -19,7 +19,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		Category {
-			"361do plugins"
+			"361do_plugins"
 		},
 #ifdef AE_OS_WIN
 	#ifdef AE_PROC_INTELx64
