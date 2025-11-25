@@ -19,7 +19,7 @@ resource 'PiPL' (16000) {
 		},
 		
 		Category {
-			"Stretch"
+			"361do plugins"
 		},
 #ifdef AE_OS_WIN
 	#ifdef AE_PROC_INTELx64
