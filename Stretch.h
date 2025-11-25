@@ -2,8 +2,6 @@
 #ifndef STRETCH_H
 #define STRETCH_H
 
-#include "AEConfig.h"
-
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 2
 #define BUG_VERSION 0
@@ -43,6 +41,8 @@
      ((((BUILD_VERSION) & PF_Vers_BUILD_BITS) << PF_Vers_BUILD_SHIFT)))
 
 #else
+
+#include "AEConfig.h"
 
 #ifdef _WIN32
 #define _USE_MATH_DEFINES
