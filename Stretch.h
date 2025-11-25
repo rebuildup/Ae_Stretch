@@ -36,10 +36,11 @@
 #endif
 
 #define MAJOR_VERSION 1
-#define MINOR_VERSION 1
+#define MINOR_VERSION 2
 #define BUG_VERSION 0
 #define STAGE_VERSION PF_Stage_DEVELOP
 #define BUILD_VERSION 1
+#define STRETCH_VERSION PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION)
 #define NAME "Stretch"
 #define DESCRIPTION "Stretches pixels based on an anchor point and angle"
 

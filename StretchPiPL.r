@@ -1,5 +1,6 @@
 #include "AEConfig.h"
 #include "AE_EffectVers.h"
+#include "Stretch.h"
 
 #ifndef AE_OS_WIN
 	#include <AE_General.r>
@@ -40,7 +41,7 @@ resource 'PiPL' (16000) {
 	},
 	
 	AE_Effect_Version {
-		593921	/* 1.1 = 528385 + (1<<16) */
+		STRETCH_VERSION
 	},
 	
 	AE_Effect_Info_Flags {
