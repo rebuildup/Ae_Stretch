@@ -1,6 +1,8 @@
 #include "AEConfig.h"
 #include "AE_EffectVers.h"
+#define AE_STRETCH_PIPL_BUILD
 #include "Stretch.h"
+#undef AE_STRETCH_PIPL_BUILD
 
 #ifndef AE_OS_WIN
 	#include <AE_General.r>

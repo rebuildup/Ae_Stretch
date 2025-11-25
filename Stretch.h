@@ -8,8 +8,10 @@
 #endif
 
 #include "AEConfig.h"
-#include "entry.h"
 #include "AE_Effect.h"
+
+#if !defined(AE_STRETCH_PIPL_BUILD)
+#include "entry.h"
 #include "AE_EffectCB.h"
 #include "AE_Macros.h"
 #include "Param_Utils.h"
@@ -18,14 +20,14 @@
 #include "AE_GeneralPlug.h"
 #include "AEGP_SuiteHandler.h"
 #include <cmath>
+#endif
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(AE_STRETCH_PIPL_BUILD)
 #include <Windows.h>
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 #endif
-
 
 #ifndef DllExport
 #if defined(_WIN32)
@@ -70,7 +72,6 @@ enum
     ANGLE_DISK_ID,
     DIRECTION_DISK_ID
 };
-
 
 #ifdef __cplusplus
 extern "C"
