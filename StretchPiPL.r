@@ -46,16 +46,14 @@ resource 'PiPL' (16000) {
 	},
 	
 	AE_Effect_Version {
-		(MAJOR_VERSION << 19) +
-		(MINOR_VERSION << 15) +
-		(BUG_VERSION   << 11) +
-		(STAGE_VERSION << 9)  +
-		BUILD_VERSION
+		524289    /* 1.0.0 */
 	},
 	
 	AE_Effect_Info_Flags {
 		0
-	},		AE_Effect_Global_OutFlags {
+	},
+	
+	AE_Effect_Global_OutFlags {
 			0x02000400
 		},
 		
