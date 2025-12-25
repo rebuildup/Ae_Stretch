@@ -1,8 +1,5 @@
 #include "AEConfig.h"
 #include "AE_EffectVers.h"
-#define AE_STRETCH_PIPL_BUILD
-#include "Stretch.h"
-#undef AE_STRETCH_PIPL_BUILD
 
 /* Include AE_General.r for resource definitions on Mac */
 #ifdef AE_OS_MAC
