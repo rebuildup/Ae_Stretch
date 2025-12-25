@@ -4,7 +4,13 @@
 #include "Stretch.h"
 #undef AE_STRETCH_PIPL_BUILD
 
-#ifndef AE_OS_WIN
+/* Include AE_General.r for resource definitions on Mac */
+#ifdef AE_OS_MAC
+	#include <AE_General.r>
+#endif
+
+#if defined(__MACH__) && !defined(AE_OS_MAC)
+	#define AE_OS_MAC 1
 	#include <AE_General.r>
 #endif
 	

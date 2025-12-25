@@ -183,7 +183,7 @@
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREFIX_HEADER = "$(SYSTEM_LIBRARY_DIR)/Frameworks/Cocoa.framework/Headers/Cocoa.h";
 				GCC_REUSE_STRINGS = NO;
-				GCC_SYMBOLS_PRIVATE_EXTERN = YES;
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
 				GCC_THREADSAFE_STATICS = NO;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
 				GCC_WARN_ABOUT_RETURN_TYPE = YES;
@@ -203,8 +203,13 @@
 					../../../Headers/SP,
 					../../../Resources,
 				);
-				ONLY_ACTIVE_ARCH = YES;
+				ONLY_ACTIVE_ARCH = NO;
 				REZ_PREPROCESSOR_DEFINITIONS = __MACH__;
+				REZ_SEARCH_PATHS = (
+					../../../Headers,
+					../../../Headers/SP,
+					../../../Resources,
+				);
 				SDKROOT = macosx;
 				WRAPPER_EXTENSION = plugin;
 			};
