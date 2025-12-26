@@ -155,50 +155,31 @@ struct PixelTraits<PF_PixelFloat>
 // Sampling
 // -----------------------------------------------------------------------------
 
+// Nearest Neighbor sampling to avoid black fringe artifacts
+// This method prevents blending with transparent (alpha=0) black pixels,
+// which is the recommended approach per Adobe's documentation:
+// https://ae-plugins.docsforadobe.dev/effect-details/pixel-aspect-ratio/?h=anti+aliasing#dont-assume-pixels-are-square-or-1-to-1
 template <typename Pixel>
-static inline Pixel SampleBilinear(const A_u_char* base_ptr,
+static inline Pixel SampleNearestNeighbor(const A_u_char* base_ptr,
     A_long rowbytes,
     float xf,
     float yf,
     int width,
     int height)
 {
-    // Clamp coordinates to valid range
-    xf = ClampScalar(xf, 0.0f, static_cast<float>(width - 1));
-    yf = ClampScalar(yf, 0.0f, static_cast<float>(height - 1));
+    // Round to nearest integer (same method as MultiSlicer)
+    A_long x = static_cast<A_long>(xf + 0.5f);
+    A_long y = static_cast<A_long>(yf + 0.5f);
 
-    const int x0 = static_cast<int>(xf);
-    const int y0 = static_cast<int>(yf);
-    const int x1 = (std::min)(x0 + 1, width - 1);
-    const int y1 = (std::min)(y0 + 1, height - 1);
+    // Bounds check
+    if (x < 0 || x >= width || y < 0 || y >= height) {
+        Pixel result;
+        std::memset(&result, 0, sizeof(Pixel));
+        return result;
+    }
 
-    const float tx = xf - static_cast<float>(x0);
-    const float ty = yf - static_cast<float>(y0);
-
-    const Pixel* row0 = reinterpret_cast<const Pixel*>(base_ptr + static_cast<A_long>(y0) * rowbytes);
-    const Pixel* row1 = reinterpret_cast<const Pixel*>(base_ptr + static_cast<A_long>(y1) * rowbytes);
-
-    const Pixel& p00 = row0[x0];
-    const Pixel& p10 = row0[x1];
-    const Pixel& p01 = row1[x0];
-    const Pixel& p11 = row1[x1];
-
-    auto lerp = [](float a, float b, float t) { return a + (b - a) * t; };
-
-    Pixel result;
-    result.alpha = PixelTraits<Pixel>::FromFloat(
-        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.alpha), PixelTraits<Pixel>::ToFloat(p10.alpha), tx),
-            lerp(PixelTraits<Pixel>::ToFloat(p01.alpha), PixelTraits<Pixel>::ToFloat(p11.alpha), tx), ty));
-    result.red = PixelTraits<Pixel>::FromFloat(
-        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.red), PixelTraits<Pixel>::ToFloat(p10.red), tx),
-            lerp(PixelTraits<Pixel>::ToFloat(p01.red), PixelTraits<Pixel>::ToFloat(p11.red), tx), ty));
-    result.green = PixelTraits<Pixel>::FromFloat(
-        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.green), PixelTraits<Pixel>::ToFloat(p10.green), tx),
-            lerp(PixelTraits<Pixel>::ToFloat(p01.green), PixelTraits<Pixel>::ToFloat(p11.green), tx), ty));
-    result.blue = PixelTraits<Pixel>::FromFloat(
-        lerp(lerp(PixelTraits<Pixel>::ToFloat(p00.blue), PixelTraits<Pixel>::ToFloat(p10.blue), tx),
-            lerp(PixelTraits<Pixel>::ToFloat(p01.blue), PixelTraits<Pixel>::ToFloat(p11.blue), tx), ty));
-    return result;
+    const Pixel* row = reinterpret_cast<const Pixel*>(base_ptr + y * rowbytes);
+    return row[x];
 }
 
 // -----------------------------------------------------------------------------
@@ -269,7 +250,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -280,7 +261,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -291,7 +272,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 proj_len += para_x;
             }
             continue;
@@ -308,17 +289,17 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             if (dist > eff) {
                 sx -= shift_vec_x;
                 sy -= shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
             else if (dist < -eff) {
                 sx += shift_vec_x;
                 sy += shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
             else {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
 
             sample_x += 1.0f;
@@ -375,7 +356,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -386,7 +367,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 proj_len += para_x;
             }
             continue;
@@ -405,13 +386,13 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
                 // Border
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
             else {
                 // Shifted
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
 
             sample_x += 1.0f;
@@ -468,7 +449,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -479,7 +460,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 proj_len += para_x;
             }
             continue;
@@ -498,13 +479,13 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
                 // Border
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
             else {
                 // Shifted
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
 
             sample_x += 1.0f;
