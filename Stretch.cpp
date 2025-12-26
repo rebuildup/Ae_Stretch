@@ -35,8 +35,13 @@ GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_
     (void)output;
 
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
-    // Support 16-bit (Deep Color), Multi-Frame Rendering
-    out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE | PF_OutFlag_PIX_INDEPENDENT;
+    
+    // Enable expanding output buffer beyond layer bounds
+    // This allows the effect to render pixels outside the original layer boundaries
+    out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE | 
+                          PF_OutFlag_PIX_INDEPENDENT |
+                          PF_OutFlag_I_EXPAND_BUFFER;
+    
     out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
     return PF_Err_NONE;
 }
@@ -679,6 +684,12 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     const float para_x = cs;
     const float para_y = sn;
 
+    // Adjust anchor point for output_origin offset
+    // When PF_OutFlag_I_EXPAND_BUFFER is set, After Effects tells us where
+    // the original layer is positioned within the expanded buffer
+    const float adjusted_anchor_x = static_cast<float>(anchor_x) + static_cast<float>(in_data->output_origin_x);
+    const float adjusted_anchor_y = static_cast<float>(anchor_y) + static_cast<float>(in_data->output_origin_y);
+
     StretchRenderContext<Pixel> ctx{};
     ctx.input_base = input_base;
     ctx.output_base = output_base;
@@ -688,8 +699,8 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     ctx.height = height;
     ctx.input_width = input_width;
     ctx.input_height = input_height;
-    ctx.anchor_x = static_cast<float>(anchor_x);
-    ctx.anchor_y = static_cast<float>(anchor_y);
+    ctx.anchor_x = adjusted_anchor_x;
+    ctx.anchor_y = adjusted_anchor_y;
     ctx.effective_shift = effective_shift;
     ctx.shift_vec_x = shift_vec_x;
     ctx.shift_vec_y = shift_vec_y;
