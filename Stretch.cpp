@@ -333,6 +333,10 @@ struct StretchRenderContext
     float perp_y;
     float para_x;
     float para_y;
+    
+    // Output origin offset (for expanded buffer)
+    float output_origin_x;
+    float output_origin_y;
 };
 
 template <typename Pixel>
@@ -365,8 +369,10 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         const float base_para = dy * para_y;
         float proj_len = dx0 * para_x + base_para;
 
-        float sample_x = 0.0f;
-        const float sample_y = yf;
+        // Convert output buffer coordinates to input image coordinates
+        // Output buffer (0,0) corresponds to input image (-output_origin_x, -output_origin_y)
+        float sample_x = 0.0f - ctx.output_origin_x;
+        const float sample_y = yf - ctx.output_origin_y;
 
         Pixel* out_row = reinterpret_cast<Pixel*>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
 
@@ -467,8 +473,9 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
         const float base_para = dy * para_y;
         float proj_len = dx0 * para_x + base_para;
 
-        float sample_x = 0.0f;
-        const float sample_y = yf;
+        // Convert output buffer coordinates to input image coordinates
+        float sample_x = 0.0f - ctx.output_origin_x;
+        const float sample_y = yf - ctx.output_origin_y;
 
         // Entire row is behind the line (dist < 0) -> unchanged
         if (row_max < 0.0f) {
@@ -560,8 +567,9 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
         const float base_para = dy * para_y;
         float proj_len = dx0 * para_x + base_para;
 
-        float sample_x = 0.0f;
-        const float sample_y = yf;
+        // Convert output buffer coordinates to input image coordinates
+        float sample_x = 0.0f - ctx.output_origin_x;
+        const float sample_y = yf - ctx.output_origin_y;
 
         // Entire row is in front of the line (dist > 0) -> unchanged
         if (row_min > 0.0f) {
@@ -708,6 +716,8 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     ctx.perp_y = perp_y;
     ctx.para_x = para_x;
     ctx.para_y = para_y;
+    ctx.output_origin_x = static_cast<float>(in_data->output_origin_x);
+    ctx.output_origin_y = static_cast<float>(in_data->output_origin_y);
 
     const int max_threads = std::max(1u, std::thread::hardware_concurrency());
     const int height_clamped = std::max(height, 1);

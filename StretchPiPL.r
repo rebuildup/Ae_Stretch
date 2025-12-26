@@ -54,8 +54,9 @@ resource 'PiPL' (16000) {
 	},
 	
 	AE_Effect_Global_OutFlags {
-			0x02000400
-		},
+		// PF_OutFlag_DEEP_COLOR_AWARE | PF_OutFlag_PIX_INDEPENDENT | PF_OutFlag_I_EXPAND_BUFFER
+		0x02000600
+	},
 		
 		AE_Effect_Global_OutFlags_2 {
 			0x08000000
