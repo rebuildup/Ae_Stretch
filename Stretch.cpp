@@ -164,8 +164,8 @@ FrameSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_L
     // Set output dimensions and origin
     out_data->width = input_width + expand_left + expand_right;
     out_data->height = input_height + expand_top + expand_bottom;
-    out_data->origin_x = expand_left;
-    out_data->origin_y = expand_top;
+    out_data->origin.h = static_cast<short>(expand_left);
+    out_data->origin.v = static_cast<short>(expand_top);
     
     return err;
 }
