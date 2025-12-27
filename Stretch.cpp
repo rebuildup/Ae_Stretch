@@ -42,7 +42,8 @@ GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_
                           PF_OutFlag_PIX_INDEPENDENT |
                           PF_OutFlag_I_EXPAND_BUFFER;
     
-    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
+    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING |
+                           PF_OutFlag2_REVEALS_ZERO_ALPHA;
     return PF_Err_NONE;
 }
 
@@ -307,6 +308,29 @@ static inline Pixel SampleNearestNeighbor(const A_u_char* base_ptr,
     return row[x];
 }
 
+// Blend two pixels with anti-aliasing
+// coverage: 0.0 = fully pixel_a, 1.0 = fully pixel_b
+template <typename Pixel>
+static inline Pixel BlendPixels(const Pixel& pixel_a, const Pixel& pixel_b, float coverage)
+{
+    using Traits = PixelTraits<Pixel>;
+    
+    // Clamp coverage to [0, 1]
+    coverage = ClampScalar(coverage, 0.0f, 1.0f);
+    float inv_coverage = 1.0f - coverage;
+    
+    Pixel result;
+    result.alpha = Traits::FromFloat(Traits::ToFloat(pixel_a.alpha) * inv_coverage + 
+                                     Traits::ToFloat(pixel_b.alpha) * coverage);
+    result.red = Traits::FromFloat(Traits::ToFloat(pixel_a.red) * inv_coverage + 
+                                   Traits::ToFloat(pixel_b.red) * coverage);
+    result.green = Traits::FromFloat(Traits::ToFloat(pixel_a.green) * inv_coverage + 
+                                     Traits::ToFloat(pixel_b.green) * coverage);
+    result.blue = Traits::FromFloat(Traits::ToFloat(pixel_a.blue) * inv_coverage + 
+                                    Traits::ToFloat(pixel_b.blue) * coverage);
+    return result;
+}
+
 // -----------------------------------------------------------------------------
 // Stretch rendering helpers
 // -----------------------------------------------------------------------------
@@ -415,22 +439,61 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         // General case: mix of negative side, gap, and positive side
         float dist = dist0;
         proj_len = dx0 * para_x + base_para;
+        
+        // Anti-aliasing feather width (in pixels)
+        const float feather = 0.5f;
 
         for (int x = 0; x < ctx.width; ++x) {
             float sx = sample_x;
             float sy = sample_y;
 
-            if (dist > eff) {
+            // Calculate distance from gap boundaries
+            float dist_from_neg_edge = dist + eff;  // Distance from -eff boundary
+            float dist_from_pos_edge = eff - dist;  // Distance from +eff boundary
+
+            // Determine which region we're in and apply anti-aliasing at boundaries
+            if (dist > eff + feather) {
+                // Fully in positive shifted region
                 sx -= shift_vec_x;
                 sy -= shift_vec_y;
                 out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
-            else if (dist < -eff) {
+            else if (dist < -eff - feather) {
+                // Fully in negative shifted region
                 sx += shift_vec_x;
                 sy += shift_vec_y;
                 out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
+            else if (dist > eff - feather && dist < eff + feather) {
+                // Anti-aliasing zone: transition from gap to positive shifted
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                Pixel border_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                
+                float sx_shifted = sx - shift_vec_x;
+                float sy_shifted = sy - shift_vec_y;
+                Pixel shifted_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                
+                // coverage: 0 at (eff - feather), 1 at (eff + feather)
+                float coverage = (dist - (eff - feather)) / (2.0f * feather);
+                out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
+            }
+            else if (dist > -eff - feather && dist < -eff + feather) {
+                // Anti-aliasing zone: transition from negative shifted to gap
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                Pixel border_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                
+                float sx_shifted = sx + shift_vec_x;
+                float sy_shifted = sy + shift_vec_y;
+                Pixel shifted_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                
+                // coverage: 1 at (-eff - feather), 0 at (-eff + feather)
+                float coverage = ((-eff + feather) - dist) / (2.0f * feather);
+                out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
+            }
             else {
+                // Fully in gap region
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
