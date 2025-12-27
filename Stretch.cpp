@@ -536,56 +536,58 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         
         // Anti-aliasing feather width (in pixels)
         const float feather = 0.5f;
+        
+        // Pre-calculate constants to avoid repeated computation
+        const float eff_plus_feather = eff + feather;
+        const float eff_minus_feather = eff - feather;
+        const float neg_eff_plus_feather = -eff + feather;
+        const float neg_eff_minus_feather = -eff - feather;
+        const float feather_inv = 1.0f / (2.0f * feather);
 
         for (int x = 0; x < ctx.width; ++x) {
-            float sx = sample_x;
-            float sy = sample_y;
+            // Pre-calculate border point (used in multiple branches)
+            const float border_x = anchor_x_f + proj_len * para_x;
+            const float border_y = anchor_y_f + proj_len * para_y;
 
             // Determine which region we're in and apply anti-aliasing at boundaries
-            if (dist > eff + feather) {
+            if (dist > eff_plus_feather) {
                 // Fully in positive shifted region
-                sx -= shift_vec_x;
-                sy -= shift_vec_y;
+                const float sx = sample_x - shift_vec_x;
+                const float sy = sample_y - shift_vec_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
-            else if (dist < -eff - feather) {
+            else if (dist < neg_eff_minus_feather) {
                 // Fully in negative shifted region
-                sx += shift_vec_x;
-                sy += shift_vec_y;
+                const float sx = sample_x + shift_vec_x;
+                const float sy = sample_y + shift_vec_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
-            else if (dist > eff - feather && dist <= eff + feather) {
+            else if (dist > eff_minus_feather) {
                 // Anti-aliasing zone: transition from gap to positive shifted
-                const float border_x = anchor_x_f + proj_len * para_x;
-                const float border_y = anchor_y_f + proj_len * para_y;
                 Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 
-                float sx_shifted = sx - shift_vec_x;
-                float sy_shifted = sy - shift_vec_y;
+                const float sx_shifted = sample_x - shift_vec_x;
+                const float sy_shifted = sample_y - shift_vec_y;
                 Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
                 
                 // coverage: 0 at (eff - feather), 1 at (eff + feather)
-                float coverage = (dist - (eff - feather)) / (2.0f * feather);
+                float coverage = (dist - eff_minus_feather) * feather_inv;
                 out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
             }
-            else if (dist >= -eff - feather && dist < -eff + feather) {
+            else if (dist < neg_eff_plus_feather) {
                 // Anti-aliasing zone: transition from negative shifted to gap
-                const float border_x = anchor_x_f + proj_len * para_x;
-                const float border_y = anchor_y_f + proj_len * para_y;
                 Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 
-                float sx_shifted = sx + shift_vec_x;
-                float sy_shifted = sy + shift_vec_y;
+                const float sx_shifted = sample_x + shift_vec_x;
+                const float sy_shifted = sample_y + shift_vec_y;
                 Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
                 
                 // coverage: 1 at (-eff - feather), 0 at (-eff + feather)
-                float coverage = ((-eff + feather) - dist) / (2.0f * feather);
+                float coverage = (neg_eff_plus_feather - dist) * feather_inv;
                 out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
             }
             else {
                 // Fully in gap region
-                const float border_x = anchor_x_f + proj_len * para_x;
-                const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
 
@@ -617,8 +619,9 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
         // Calculate distance from anchor point (in input image coordinate system)
         const float dy = yf_input - anchor_y_f;
 
-        const float dx0 = -anchor_x_f;
-        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;
+        // Calculate x range in input image coordinate system
+        const float dx0 = 0.0f - ctx.output_origin_x - anchor_x_f;  // Left edge of output buffer in input coords
+        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;  // Right edge
 
         const float base_perp = dy * perp_y;
         const float dist0 = dx0 * perp_x + base_perp;
@@ -631,7 +634,6 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
         const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
 
         const float base_para = dy * para_y;
-        float proj_len = dx0 * para_x + base_para;
 
         // Convert output buffer coordinates to input image coordinates
         float sample_x = 0.0f - ctx.output_origin_x;
@@ -648,7 +650,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -656,35 +658,76 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
 
         // Entire row is within gap: 0 <= dist < eff -> border only
         if (row_min >= 0.0f && row_max < eff) {
+            float proj_len = dx0 * para_x + base_para;
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 proj_len += para_x;
             }
             continue;
         }
 
         // General case
+        // General case
         float dist = dist0;
-        proj_len = dx0 * para_x + base_para;
+        float proj_len = dx0 * para_x + base_para;
+
+        // Anti-aliasing constants
+        const float feather = 0.5f;
+        const float eff_plus_feather = eff + feather;
+        const float eff_minus_feather = eff - feather;
+        const float feather_inv = 1.0f / (2.0f * feather);
 
         for (int x = 0; x < ctx.width; ++x) {
-            if (dist < 0.0f) {
+            // Pre-calculate border point (used in multiple branches)
+            const float border_x = anchor_x_f + proj_len * para_x;
+            const float border_y = anchor_y_f + proj_len * para_y;
+
+            if (dist < -feather) {
                 // Unchanged
                 out_row[x] = in_row[x];
             }
-            else if (dist < eff) {
-                // Border
-                const float border_x = anchor_x_f + proj_len * para_x;
-                const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-            }
-            else {
+            else if (dist > eff_plus_feather) {
                 // Shifted
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+            }
+            else if (dist <= feather) {
+                // Anti-aliasing zone: transition from original to gap (around dist=0)
+                // dist is in [-feather, feather]
+                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                // Original pixel (SampleBilinear is safer than in_row[x] if we want consistent filtering, but in_row[x] is faster and sharper.
+                // However, since we are blending, using in_row[x] (Nearest) vs Bilinear might look slightly different.
+                // Let's use SampleBilinear for consistency with the rest of the image if we want subpixel correctness at this edge too,
+                // but 'in_row' implies integer coordinates. Let's stick to in_row[x] as 'original' source for simplicity and sharpness preservation.
+                // Pixel original_pixel = in_row[x]; 
+                // Actually, to match the "Bilinear" look of the stretched part, maybe we should just use in_row[x].
+                
+                // coverage: 0 at -feather, 1 at +feather.
+                // But wait, "Original" is when dist < 0. "Gap" is when dist > 0.
+                // So at dist = -feather, we want 100% Original. At dist = +feather, we want 100% Gap.
+                // BlendPixels(A, B, t): 0->A, 1->B.
+                // So A=Original, B=Border. t should be 0 at -feather, 1 at +feather.
+                float t = (dist - (-feather)) * feather_inv;
+                out_row[x] = BlendPixels(in_row[x], border_pixel, t);
+            }
+            else if (dist > eff_minus_feather) {
+                // Anti-aliasing zone: transition from gap to shifted (around dist=eff)
+                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                
+                const float sx_shifted = sample_x - shift_vec_x;
+                const float sy_shifted = sample_y - shift_vec_y;
+                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                
+                // coverage: 0 at eff-feather (Border), 1 at eff+feather (Shifted)
+                float t = (dist - eff_minus_feather) * feather_inv;
+                out_row[x] = BlendPixels(border_pixel, shifted_pixel, t);
+            }
+            else {
+                // Purely Border (Gap)
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
 
             sample_x += 1.0f;
@@ -715,8 +758,9 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
         // Calculate distance from anchor point (in input image coordinate system)
         const float dy = yf_input - anchor_y_f;
 
-        const float dx0 = -anchor_x_f;
-        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;
+        // Calculate x range in input image coordinate system
+        const float dx0 = 0.0f - ctx.output_origin_x - anchor_x_f;  // Left edge of output buffer in input coords
+        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;  // Right edge
 
         const float base_perp = dy * perp_y;
         const float dist0 = dx0 * perp_x + base_perp;
@@ -729,7 +773,6 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
         const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
 
         const float base_para = dy * para_y;
-        float proj_len = dx0 * para_x + base_para;
 
         // Convert output buffer coordinates to input image coordinates
         float sample_x = 0.0f - ctx.output_origin_x;
@@ -746,7 +789,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -754,35 +797,67 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
 
         // Entire row is within gap: -eff < dist <= 0 -> border only
         if (row_min > -eff && row_max <= 0.0f) {
+            float proj_len = dx0 * para_x + base_para;
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 proj_len += para_x;
             }
             continue;
         }
 
         // General case
+        // General case
         float dist = dist0;
-        proj_len = dx0 * para_x + base_para;
+        float proj_len = dx0 * para_x + base_para;
+
+        // Anti-aliasing constants
+        const float feather = 0.5f;
+        const float neg_eff_plus_feather = -eff + feather;
+        const float neg_eff_minus_feather = -eff - feather;
+        const float feather_inv = 1.0f / (2.0f * feather);
 
         for (int x = 0; x < ctx.width; ++x) {
-            if (dist > 0.0f) {
+            // Pre-calculate border point
+            const float border_x = anchor_x_f + proj_len * para_x;
+            const float border_y = anchor_y_f + proj_len * para_y;
+
+            if (dist > feather) {
                 // Unchanged
                 out_row[x] = in_row[x];
             }
-            else if (dist > -eff) {
-                // Border
-                const float border_x = anchor_x_f + proj_len * para_x;
-                const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-            }
-            else {
+            else if (dist < neg_eff_minus_feather) {
                 // Shifted
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+            }
+            else if (dist >= -feather) {
+                // Anti-aliasing zone: transition from border to original (around dist=0)
+                // dist is in [-feather, feather]
+                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                
+                // coverage: 0 at feather (Original), 1 at -feather (Border)
+                float t = (feather - dist) * feather_inv;
+                out_row[x] = BlendPixels(in_row[x], border_pixel, t);
+            }
+            else if (dist < neg_eff_plus_feather) {
+                // Anti-aliasing zone: transition from shifted to border (around dist=-eff)
+                // dist is in [-eff-feather, -eff+feather]
+                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                
+                const float sx_shifted = sample_x + shift_vec_x;
+                const float sy_shifted = sample_y + shift_vec_y;
+                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                
+                // coverage: 0 at -eff+feather (Border), 1 at -eff-feather (Shifted)
+                float t = (neg_eff_plus_feather - dist) * feather_inv;
+                out_row[x] = BlendPixels(border_pixel, shifted_pixel, t);
+            }
+            else {
+                // Purely Border (Gap)
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
 
             sample_x += 1.0f;
