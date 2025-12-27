@@ -562,7 +562,7 @@ struct StretchRenderContext
     PF_Sampling8Suite1* sampling8_suite;
     PF_Sampling16Suite1* sampling16_suite;
     PF_ProgPtr effect_ref;
-    PF_SampleParams sample_params;
+    PF_SampPB sample_params;
 };
 
 // Wrapper for AE Sampling Suite
