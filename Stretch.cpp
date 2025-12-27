@@ -308,6 +308,77 @@ static inline Pixel SampleNearestNeighbor(const A_u_char* base_ptr,
     return row[x];
 }
 
+// Bilinear sampling for anti-aliasing
+// This provides smooth edges by interpolating between neighboring pixels
+template <typename Pixel>
+static inline Pixel SampleBilinear(const A_u_char* base_ptr,
+    A_long rowbytes,
+    float xf,
+    float yf,
+    int width,
+    int height)
+{
+    using Traits = PixelTraits<Pixel>;
+    
+    // Get integer and fractional parts
+    int x0 = static_cast<int>(floorf(xf));
+    int y0 = static_cast<int>(floorf(yf));
+    float fx = xf - x0;
+    float fy = yf - y0;
+    
+    int x1 = x0 + 1;
+    int y1 = y0 + 1;
+    
+    // Clamp to bounds
+    x0 = ClampScalar(x0, 0, width - 1);
+    x1 = ClampScalar(x1, 0, width - 1);
+    y0 = ClampScalar(y0, 0, height - 1);
+    y1 = ClampScalar(y1, 0, height - 1);
+    
+    // Get four neighboring pixels
+    const Pixel* row0 = reinterpret_cast<const Pixel*>(base_ptr + y0 * rowbytes);
+    const Pixel* row1 = reinterpret_cast<const Pixel*>(base_ptr + y1 * rowbytes);
+    
+    const Pixel& p00 = row0[x0];
+    const Pixel& p10 = row0[x1];
+    const Pixel& p01 = row1[x0];
+    const Pixel& p11 = row1[x1];
+    
+    // Bilinear interpolation
+    float w00 = (1.0f - fx) * (1.0f - fy);
+    float w10 = fx * (1.0f - fy);
+    float w01 = (1.0f - fx) * fy;
+    float w11 = fx * fy;
+    
+    Pixel result;
+    result.alpha = Traits::FromFloat(
+        Traits::ToFloat(p00.alpha) * w00 +
+        Traits::ToFloat(p10.alpha) * w10 +
+        Traits::ToFloat(p01.alpha) * w01 +
+        Traits::ToFloat(p11.alpha) * w11
+    );
+    result.red = Traits::FromFloat(
+        Traits::ToFloat(p00.red) * w00 +
+        Traits::ToFloat(p10.red) * w10 +
+        Traits::ToFloat(p01.red) * w01 +
+        Traits::ToFloat(p11.red) * w11
+    );
+    result.green = Traits::FromFloat(
+        Traits::ToFloat(p00.green) * w00 +
+        Traits::ToFloat(p10.green) * w10 +
+        Traits::ToFloat(p01.green) * w01 +
+        Traits::ToFloat(p11.green) * w11
+    );
+    result.blue = Traits::FromFloat(
+        Traits::ToFloat(p00.blue) * w00 +
+        Traits::ToFloat(p10.blue) * w10 +
+        Traits::ToFloat(p01.blue) * w01 +
+        Traits::ToFloat(p11.blue) * w11
+    );
+    
+    return result;
+}
+
 // Blend two pixels with anti-aliasing
 // coverage: 0.0 = fully pixel_a, 1.0 = fully pixel_b
 template <typename Pixel>
@@ -408,7 +479,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -419,7 +490,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
                 sample_x += 1.0f;
             }
             continue;
@@ -430,7 +501,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 proj_len += para_x;
             }
             continue;
@@ -439,60 +510,25 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         // General case: mix of negative side, gap, and positive side
         float dist = dist0;
         proj_len = dx0 * para_x + base_para;
-        
-        // Anti-aliasing feather width (in pixels)
-        const float feather = 2.0f;
 
         for (int x = 0; x < ctx.width; ++x) {
             float sx = sample_x;
             float sy = sample_y;
 
-            // Determine which region we're in and apply anti-aliasing at boundaries
-            if (dist > eff + feather) {
-                // Fully in positive shifted region
+            if (dist > eff) {
                 sx -= shift_vec_x;
                 sy -= shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
-            else if (dist < -eff - feather) {
-                // Fully in negative shifted region
+            else if (dist < -eff) {
                 sx += shift_vec_x;
                 sy += shift_vec_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
-            }
-            else if (dist > eff - feather && dist < eff + feather) {
-                // Anti-aliasing zone: transition from gap to positive shifted
-                const float border_x = anchor_x_f + proj_len * para_x;
-                const float border_y = anchor_y_f + proj_len * para_y;
-                Pixel border_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-                
-                float sx_shifted = sx - shift_vec_x;
-                float sy_shifted = sy - shift_vec_y;
-                Pixel shifted_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
-                
-                // coverage: 0 at (eff - feather), 1 at (eff + feather)
-                float coverage = (dist - (eff - feather)) / (2.0f * feather);
-                out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
-            }
-            else if (dist > -eff - feather && dist < -eff + feather) {
-                // Anti-aliasing zone: transition from negative shifted to gap
-                const float border_x = anchor_x_f + proj_len * para_x;
-                const float border_y = anchor_y_f + proj_len * para_y;
-                Pixel border_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-                
-                float sx_shifted = sx + shift_vec_x;
-                float sy_shifted = sy + shift_vec_y;
-                Pixel shifted_pixel = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
-                
-                // coverage: 1 at (-eff - feather), 0 at (-eff + feather)
-                float coverage = ((-eff + feather) - dist) / (2.0f * feather);
-                out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
             else {
-                // Fully in gap region
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleNearestNeighbor<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
 
             sample_x += 1.0f;
