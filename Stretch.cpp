@@ -353,11 +353,15 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
     const float anchor_y_f = ctx.anchor_y;
 
     for (int y = start_y; y < end_y; ++y) {
-        const float yf = static_cast<float>(y);
-        const float dy = yf - anchor_y_f;
+        // Convert output buffer y to input image coordinate system
+        const float yf_output = static_cast<float>(y);
+        const float yf_input = yf_output - ctx.output_origin_y;
+        
+        // Calculate distance from anchor point (in input image coordinate system)
+        const float dy = yf_input - anchor_y_f;
 
         const float dx0 = -anchor_x_f;
-        const float dxN = static_cast<float>(ctx.width - 1) - anchor_x_f;
+        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;
 
         const float base_perp = dy * perp_y;
         const float dist0 = dx0 * perp_x + base_perp;
@@ -369,10 +373,9 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         const float base_para = dy * para_y;
         float proj_len = dx0 * para_x + base_para;
 
-        // Convert output buffer coordinates to input image coordinates
-        // Output buffer (0,0) corresponds to input image (-output_origin_x, -output_origin_y)
+        // sample_x and sample_y are in input image coordinate system
         float sample_x = 0.0f - ctx.output_origin_x;
-        const float sample_y = yf - ctx.output_origin_y;
+        const float sample_y = yf_input;
 
         Pixel* out_row = reinterpret_cast<Pixel*>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
 
@@ -454,11 +457,15 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
     const float anchor_y_f = ctx.anchor_y;
 
     for (int y = start_y; y < end_y; ++y) {
-        const float yf = static_cast<float>(y);
-        const float dy = yf - anchor_y_f;
+        // Convert output buffer y to input image coordinate system
+        const float yf_output = static_cast<float>(y);
+        const float yf_input = yf_output - ctx.output_origin_y;
+        
+        // Calculate distance from anchor point (in input image coordinate system)
+        const float dy = yf_input - anchor_y_f;
 
         const float dx0 = -anchor_x_f;
-        const float dxN = static_cast<float>(ctx.width - 1) - anchor_x_f;
+        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;
 
         const float base_perp = dy * perp_y;
         const float dist0 = dx0 * perp_x + base_perp;
@@ -475,7 +482,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
 
         // Convert output buffer coordinates to input image coordinates
         float sample_x = 0.0f - ctx.output_origin_x;
-        const float sample_y = yf - ctx.output_origin_y;
+        const float sample_y = yf_input;
 
         // Entire row is behind the line (dist < 0) -> unchanged
         if (row_max < 0.0f) {
@@ -548,11 +555,15 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
     const float anchor_y_f = ctx.anchor_y;
 
     for (int y = start_y; y < end_y; ++y) {
-        const float yf = static_cast<float>(y);
-        const float dy = yf - anchor_y_f;
+        // Convert output buffer y to input image coordinate system
+        const float yf_output = static_cast<float>(y);
+        const float yf_input = yf_output - ctx.output_origin_y;
+        
+        // Calculate distance from anchor point (in input image coordinate system)
+        const float dy = yf_input - anchor_y_f;
 
         const float dx0 = -anchor_x_f;
-        const float dxN = static_cast<float>(ctx.width - 1) - anchor_x_f;
+        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;
 
         const float base_perp = dy * perp_y;
         const float dist0 = dx0 * perp_x + base_perp;
@@ -569,7 +580,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
 
         // Convert output buffer coordinates to input image coordinates
         float sample_x = 0.0f - ctx.output_origin_x;
-        const float sample_y = yf - ctx.output_origin_y;
+        const float sample_y = yf_input;
 
         // Entire row is in front of the line (dist > 0) -> unchanged
         if (row_min > 0.0f) {
@@ -654,15 +665,8 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     const A_long output_rowbytes = output->rowbytes;
 
     // Parameters
-    // When PF_OutFlag_I_EXPAND_BUFFER is set, After Effects automatically adjusts point parameters
-    // to the expanded buffer coordinate system. We need to convert back to input image coordinates.
-    const int anchor_x_raw = (params[STRETCH_ANCHOR_POINT]->u.td.x_value >> 16);
-    const int anchor_y_raw = (params[STRETCH_ANCHOR_POINT]->u.td.y_value >> 16);
-    
-    // Convert from expanded buffer coordinates to input image coordinates
-    const int anchor_x = anchor_x_raw - in_data->pre_effect_source_origin_x;
-    const int anchor_y = anchor_y_raw - in_data->pre_effect_source_origin_y;
-    
+    const int anchor_x = (params[STRETCH_ANCHOR_POINT]->u.td.x_value >> 16);
+    const int anchor_y = (params[STRETCH_ANCHOR_POINT]->u.td.y_value >> 16);
     float angle_deg = static_cast<float>(params[STRETCH_ANGLE]->u.ad.value >> 16);
     const float angle_rad = angle_deg * (static_cast<float>(M_PI) / 180.0f);
     const float shift_amount = static_cast<float>(params[STRETCH_SHIFT_AMOUNT]->u.fs_d.value);
@@ -699,10 +703,9 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     const float para_x = cs;
     const float para_y = sn;
 
-    // Convert anchor point from input image coordinate system to output buffer coordinate system
-    // Input image (0,0) is at output buffer (output_origin_x, output_origin_y)
-    const float anchor_x_f = static_cast<float>(anchor_x) + static_cast<float>(in_data->output_origin_x);
-    const float anchor_y_f = static_cast<float>(anchor_y) + static_cast<float>(in_data->output_origin_y);
+    // Anchor point is in input image coordinate system
+    const float anchor_x_f = static_cast<float>(anchor_x);
+    const float anchor_y_f = static_cast<float>(anchor_y);
 
     StretchRenderContext<Pixel> ctx{};
     ctx.input_base = input_base;
