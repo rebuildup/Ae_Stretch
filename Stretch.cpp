@@ -654,8 +654,15 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     const A_long output_rowbytes = output->rowbytes;
 
     // Parameters
-    const int anchor_x = (params[STRETCH_ANCHOR_POINT]->u.td.x_value >> 16);
-    const int anchor_y = (params[STRETCH_ANCHOR_POINT]->u.td.y_value >> 16);
+    // When PF_OutFlag_I_EXPAND_BUFFER is set, After Effects automatically adjusts point parameters
+    // to the expanded buffer coordinate system. We need to convert back to input image coordinates.
+    const int anchor_x_raw = (params[STRETCH_ANCHOR_POINT]->u.td.x_value >> 16);
+    const int anchor_y_raw = (params[STRETCH_ANCHOR_POINT]->u.td.y_value >> 16);
+    
+    // Convert from expanded buffer coordinates to input image coordinates
+    const int anchor_x = anchor_x_raw - in_data->pre_effect_source_origin_x;
+    const int anchor_y = anchor_y_raw - in_data->pre_effect_source_origin_y;
+    
     float angle_deg = static_cast<float>(params[STRETCH_ANGLE]->u.ad.value >> 16);
     const float angle_rad = angle_deg * (static_cast<float>(M_PI) / 180.0f);
     const float shift_amount = static_cast<float>(params[STRETCH_SHIFT_AMOUNT]->u.fs_d.value);
