@@ -1104,41 +1104,15 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     ctx.sampling8_suite = suites.Sampling8Suite1();
     ctx.sampling16_suite = suites.Sampling16Suite1();
 
-    const int max_threads = std::max(1u, std::thread::hardware_concurrency());
-    const int height_clamped = std::max(height, 1);
-    const int num_threads = std::min(max_threads, height_clamped);
-    const int rows_per_thread = (height_clamped + num_threads - 1) / num_threads;
-
-    auto worker = [&](int start_y, int end_y) {
-        if (direction == 1) {
-            ProcessRowsBoth(ctx, start_y, end_y);
-        }
-        else if (direction == 2) {
-            ProcessRowsForward(ctx, start_y, end_y);
-        }
-        else {
-            ProcessRowsBackward(ctx, start_y, end_y);
-        }
-        };
-
-    if (num_threads <= 1 || height <= 1) {
-        worker(0, height);
+    // Use main thread only to avoid issues with AE API calls from std::thread
+    if (direction == 1) {
+        ProcessRowsBoth(ctx, 0, height);
+    }
+    else if (direction == 2) {
+        ProcessRowsForward(ctx, 0, height);
     }
     else {
-        std::vector<std::thread> threads;
-        threads.reserve(num_threads);
-        int start_y = 0;
-        for (int t = 0; t < num_threads; ++t) {
-            const int end_y = std::min(start_y + rows_per_thread, height);
-            if (start_y >= end_y) {
-                break;
-            }
-            threads.emplace_back(worker, start_y, end_y);
-            start_y = end_y;
-        }
-        for (auto& th : threads) {
-            th.join();
-        }
+        ProcessRowsBackward(ctx, 0, height);
     }
 
     return PF_Err_NONE;
