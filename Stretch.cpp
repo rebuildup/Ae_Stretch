@@ -323,26 +323,48 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     // Get integer and fractional parts
     int x0 = static_cast<int>(floorf(xf));
     int y0 = static_cast<int>(floorf(yf));
-    float fx = xf - x0;
-    float fy = yf - y0;
+    float fx = xf - static_cast<float>(x0);
+    float fy = yf - static_cast<float>(y0);
     
     int x1 = x0 + 1;
     int y1 = y0 + 1;
     
-    // Clamp to bounds
-    x0 = ClampScalar(x0, 0, width - 1);
-    x1 = ClampScalar(x1, 0, width - 1);
-    y0 = ClampScalar(y0, 0, height - 1);
-    y1 = ClampScalar(y1, 0, height - 1);
+    // Check if all four pixels are within bounds
+    bool in_bounds_00 = (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height);
+    bool in_bounds_10 = (x1 >= 0 && x1 < width && y0 >= 0 && y0 < height);
+    bool in_bounds_01 = (x0 >= 0 && x0 < width && y1 >= 0 && y1 < height);
+    bool in_bounds_11 = (x1 >= 0 && x1 < width && y1 >= 0 && y1 < height);
     
-    // Get four neighboring pixels
-    const Pixel* row0 = reinterpret_cast<const Pixel*>(base_ptr + y0 * rowbytes);
-    const Pixel* row1 = reinterpret_cast<const Pixel*>(base_ptr + y1 * rowbytes);
+    // If all pixels are out of bounds, return transparent
+    if (!in_bounds_00 && !in_bounds_10 && !in_bounds_01 && !in_bounds_11) {
+        Pixel result;
+        std::memset(&result, 0, sizeof(Pixel));
+        return result;
+    }
     
-    const Pixel& p00 = row0[x0];
-    const Pixel& p10 = row0[x1];
-    const Pixel& p01 = row1[x0];
-    const Pixel& p11 = row1[x1];
+    // Get pixels (use transparent for out-of-bounds)
+    Pixel p00, p10, p01, p11;
+    std::memset(&p00, 0, sizeof(Pixel));
+    std::memset(&p10, 0, sizeof(Pixel));
+    std::memset(&p01, 0, sizeof(Pixel));
+    std::memset(&p11, 0, sizeof(Pixel));
+    
+    if (in_bounds_00) {
+        const Pixel* row0 = reinterpret_cast<const Pixel*>(base_ptr + y0 * rowbytes);
+        p00 = row0[x0];
+    }
+    if (in_bounds_10) {
+        const Pixel* row0 = reinterpret_cast<const Pixel*>(base_ptr + y0 * rowbytes);
+        p10 = row0[x1];
+    }
+    if (in_bounds_01) {
+        const Pixel* row1 = reinterpret_cast<const Pixel*>(base_ptr + y1 * rowbytes);
+        p01 = row1[x0];
+    }
+    if (in_bounds_11) {
+        const Pixel* row1 = reinterpret_cast<const Pixel*>(base_ptr + y1 * rowbytes);
+        p11 = row1[x1];
+    }
     
     // Bilinear interpolation
     float w00 = (1.0f - fx) * (1.0f - fy);
