@@ -477,8 +477,9 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         // Calculate distance from anchor point (in input image coordinate system)
         const float dy = yf_input - anchor_y_f;
 
-        const float dx0 = -anchor_x_f;
-        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;
+        // Calculate x range in input image coordinate system
+        const float dx0 = 0.0f - ctx.output_origin_x - anchor_x_f;  // Left edge of output buffer in input coords
+        const float dxN = static_cast<float>(ctx.width - 1) - ctx.output_origin_x - anchor_x_f;  // Right edge
 
         const float base_perp = dy * perp_y;
         const float dist0 = dx0 * perp_x + base_perp;
@@ -520,24 +521,19 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
 
         // Entire row is inside the gap -> border sampling only
         if (row_min > -eff && row_max < eff) {
+            float proj_len = dx0 * para_x + base_para;
             for (int x = 0; x < ctx.width; ++x) {
-                // Calculate border point: project current position onto the boundary line
-                float sx = sample_x;
-                float sy = sample_y;
-                float dx_from_anchor = sx - anchor_x_f;
-                float dy_from_anchor = sy - anchor_y_f;
-                float proj_on_para = dx_from_anchor * para_x + dy_from_anchor * para_y;
-                const float border_x = anchor_x_f + proj_on_para * para_x;
-                const float border_y = anchor_y_f + proj_on_para * para_y;
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-                sample_x += 1.0f;
+                proj_len += para_x;
             }
             continue;
         }
 
         // General case: mix of negative side, gap, and positive side
         float dist = dist0;
-        proj_len = dx0 * para_x + base_para;
+        float proj_len = dx0 * para_x + base_para;
         
         // Anti-aliasing feather width (in pixels)
         const float feather = 0.5f;
@@ -561,12 +557,8 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             }
             else if (dist > eff - feather && dist <= eff + feather) {
                 // Anti-aliasing zone: transition from gap to positive shifted
-                // Calculate border point: project current position onto the boundary line
-                float dx_from_anchor = sx - anchor_x_f;
-                float dy_from_anchor = sy - anchor_y_f;
-                float proj_on_para = dx_from_anchor * para_x + dy_from_anchor * para_y;
-                const float border_x = anchor_x_f + proj_on_para * para_x;
-                const float border_y = anchor_y_f + proj_on_para * para_y;
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
                 Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 
                 float sx_shifted = sx - shift_vec_x;
@@ -579,12 +571,8 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             }
             else if (dist >= -eff - feather && dist < -eff + feather) {
                 // Anti-aliasing zone: transition from negative shifted to gap
-                // Calculate border point: project current position onto the boundary line
-                float dx_from_anchor = sx - anchor_x_f;
-                float dy_from_anchor = sy - anchor_y_f;
-                float proj_on_para = dx_from_anchor * para_x + dy_from_anchor * para_y;
-                const float border_x = anchor_x_f + proj_on_para * para_x;
-                const float border_y = anchor_y_f + proj_on_para * para_y;
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
                 Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
                 
                 float sx_shifted = sx + shift_vec_x;
@@ -597,12 +585,8 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             }
             else {
                 // Fully in gap region
-                // Calculate border point: project current position onto the boundary line
-                float dx_from_anchor = sx - anchor_x_f;
-                float dy_from_anchor = sy - anchor_y_f;
-                float proj_on_para = dx_from_anchor * para_x + dy_from_anchor * para_y;
-                const float border_x = anchor_x_f + proj_on_para * para_x;
-                const float border_y = anchor_y_f + proj_on_para * para_y;
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
             }
 
