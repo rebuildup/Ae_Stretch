@@ -1094,7 +1094,7 @@ static PF_Err PreRender(PF_InData* in_data, PF_OutData* out_data, PF_PreRenderEx
     
     if (err) return err;
     
-    float shift_amount = shift_param.u.fs_d.value;
+    float shift_amount = static_cast<float>(shift_param.u.fs_d.value);
     
     // Calculate maximum possible expansion
     A_long expansion = static_cast<A_long>(fabsf(shift_amount) * 2.0f) + 20;
@@ -1147,21 +1147,21 @@ static PF_Err PreRender(PF_InData* in_data, PF_OutData* out_data, PF_PreRenderEx
     return err;
 }
 
+// Forward declaration
+static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output);
+
 // SmartRender for SmartFX
 static PF_Err SmartRender(PF_InData* in_data, PF_OutData* out_data, PF_SmartRenderExtra* extra)
 {
-    (void)out_data;
-    
     PF_Err err = PF_Err_NONE;
     PF_EffectWorld* input_world = NULL;
-    PF_EffectWorld* output_world = extra->output->output_world;
-    PF_WorldSuite2* wsP = NULL;
-    
-    // Get World Suite
-    ERR(AEFX_AcquireSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, NULL, (void**)&wsP));
+    PF_EffectWorld* output_world = NULL;
     
     // Checkout input
     ERR(extra->cb->checkout_layer_pixels(in_data->effect_ref, STRETCH_INPUT, &input_world));
+    
+    // Get output world
+    ERR(extra->cb->checkout_output(in_data->effect_ref, &output_world));
     
     if (!err && input_world && output_world) {
         // Call the regular render function
@@ -1186,14 +1186,11 @@ static PF_Err SmartRender(PF_InData* in_data, PF_OutData* out_data, PF_SmartRend
         }
         
         // Checkin parameters
-        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_SHIFT_AMOUNT]));
-        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANCHOR_POINT]));
-        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANGLE]));
-        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_DIRECTION]));
+        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_SHIFT_AMOUNT]));
+        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANCHOR_POINT]));
+        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANGLE]));
+        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_DIRECTION]));
     }
-    
-    // Release suite
-    ERR2(AEFX_ReleaseSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, NULL));
     
     return err;
 }
