@@ -699,10 +699,10 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     const float para_x = cs;
     const float para_y = sn;
 
-    // Anchor point is in input image coordinate system
-    // No need to adjust for output_origin here - that's handled in sampling coordinates
-    const float anchor_x_f = static_cast<float>(anchor_x);
-    const float anchor_y_f = static_cast<float>(anchor_y);
+    // Convert anchor point from input image coordinate system to output buffer coordinate system
+    // Input image (0,0) is at output buffer (output_origin_x, output_origin_y)
+    const float anchor_x_f = static_cast<float>(anchor_x) + static_cast<float>(in_data->output_origin_x);
+    const float anchor_y_f = static_cast<float>(anchor_y) + static_cast<float>(in_data->output_origin_y);
 
     StretchRenderContext<Pixel> ctx{};
     ctx.input_base = input_base;
