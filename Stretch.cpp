@@ -1,4 +1,5 @@
 #include "Stretch.h"
+#include "AE_EffectCBSuites.h"
 
 #include <algorithm>
 #include <cmath>
@@ -401,6 +402,108 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     return result;
 }
 
+// Fast row sampler for cases where Y coordinate is constant across the row
+// This avoids repeated Y-coordinate calculations (floor, clamp, row pointer lookup)
+template <typename Pixel>
+class FastRowSampler {
+public:
+    const Pixel* row0;
+    const Pixel* row1;
+    float w0_y; // Weight for row0 (1 - fy)
+    float w1_y; // Weight for row1 (fy)
+    int width;
+    int height;
+    
+    // Initialize with a constant Y coordinate
+    void Setup(const A_u_char* base, A_long rowbytes, int w, int h, float y) {
+        width = w;
+        height = h;
+        
+        int y0 = static_cast<int>(floorf(y));
+        int y1 = y0 + 1;
+        float fy = y - static_cast<float>(y0);
+        
+        w0_y = 1.0f - fy;
+        w1_y = fy;
+        
+        // Clamp Y and check bounds
+        bool y0_in = (y0 >= 0 && y0 < h);
+        bool y1_in = (y1 >= 0 && y1 < h);
+        
+        if (y0_in) row0 = reinterpret_cast<const Pixel*>(base + y0 * rowbytes);
+        else row0 = nullptr;
+        
+        if (y1_in) row1 = reinterpret_cast<const Pixel*>(base + y1 * rowbytes);
+        else row1 = nullptr;
+    }
+    
+    // Sample at X coordinate
+    inline Pixel Sample(float x) const {
+        using Traits = PixelTraits<Pixel>;
+        
+        int x0 = static_cast<int>(floorf(x));
+        int x1 = x0 + 1;
+        float fx = x - static_cast<float>(x0);
+        
+        // Check bounds for X
+        bool x0_in = (x0 >= 0 && x0 < width);
+        bool x1_in = (x1 >= 0 && x1 < width);
+        
+        // Weights
+        float w0_x = 1.0f - fx;
+        float w1_x = fx;
+        
+        float r = 0, g = 0, b = 0, a = 0;
+        
+        // Contribution from Row 0
+        if (row0) {
+            if (x0_in) {
+                const Pixel& p = row0[x0];
+                float w = w0_y * w0_x;
+                a += Traits::ToFloat(p.alpha) * w;
+                r += Traits::ToFloat(p.red) * w;
+                g += Traits::ToFloat(p.green) * w;
+                b += Traits::ToFloat(p.blue) * w;
+            }
+            if (x1_in) {
+                const Pixel& p = row0[x1];
+                float w = w0_y * w1_x;
+                a += Traits::ToFloat(p.alpha) * w;
+                r += Traits::ToFloat(p.red) * w;
+                g += Traits::ToFloat(p.green) * w;
+                b += Traits::ToFloat(p.blue) * w;
+            }
+        }
+        
+        // Contribution from Row 1
+        if (row1) {
+            if (x0_in) {
+                const Pixel& p = row1[x0];
+                float w = w1_y * w0_x;
+                a += Traits::ToFloat(p.alpha) * w;
+                r += Traits::ToFloat(p.red) * w;
+                g += Traits::ToFloat(p.green) * w;
+                b += Traits::ToFloat(p.blue) * w;
+            }
+            if (x1_in) {
+                const Pixel& p = row1[x1];
+                float w = w1_y * w1_x;
+                a += Traits::ToFloat(p.alpha) * w;
+                r += Traits::ToFloat(p.red) * w;
+                g += Traits::ToFloat(p.green) * w;
+                b += Traits::ToFloat(p.blue) * w;
+            }
+        }
+
+        Pixel result;
+        result.alpha = Traits::FromFloat(a);
+        result.red   = Traits::FromFloat(r);
+        result.green = Traits::FromFloat(g);
+        result.blue  = Traits::FromFloat(b);
+        return result;
+    }
+};
+
 // Blend two pixels with anti-aliasing
 // coverage: 0.0 = fully pixel_a, 1.0 = fully pixel_b
 template <typename Pixel>
@@ -454,7 +557,46 @@ struct StretchRenderContext
     // Output origin offset (for expanded buffer)
     float output_origin_x;
     float output_origin_y;
+    
+    // AE Sampling Suite
+    PF_Sampling8Suite1* sampling8_suite;
+    PF_Sampling16Suite1* sampling16_suite;
+    PF_ProgPtr effect_ref;
+    PF_SampleParams sample_params;
 };
+
+// Wrapper for AE Sampling Suite
+template <typename Pixel>
+static inline Pixel SamplePixel(const StretchRenderContext<Pixel>& ctx, float x, float y);
+
+template <>
+static inline PF_Pixel8 SamplePixel<PF_Pixel8>(const StretchRenderContext<PF_Pixel8>& ctx, float x, float y) {
+    PF_Pixel8 result;
+    PF_Fixed fx = static_cast<PF_Fixed>(x * 65536.0f);
+    PF_Fixed fy = static_cast<PF_Fixed>(y * 65536.0f);
+    if (ctx.sampling8_suite->subpixel_sample(ctx.effect_ref, fx, fy, &ctx.sample_params, &result) != PF_Err_NONE) {
+        std::memset(&result, 0, sizeof(PF_Pixel8));
+    }
+    return result;
+}
+
+template <>
+static inline PF_Pixel16 SamplePixel<PF_Pixel16>(const StretchRenderContext<PF_Pixel16>& ctx, float x, float y) {
+    PF_Pixel16 result;
+    PF_Fixed fx = static_cast<PF_Fixed>(x * 65536.0f);
+    PF_Fixed fy = static_cast<PF_Fixed>(y * 65536.0f);
+    if (ctx.sampling16_suite->subpixel_sample16(ctx.effect_ref, fx, fy, &ctx.sample_params, &result) != PF_Err_NONE) {
+        std::memset(&result, 0, sizeof(PF_Pixel16));
+    }
+    return result;
+}
+
+template <>
+static inline PF_PixelFloat SamplePixel<PF_PixelFloat>(const StretchRenderContext<PF_PixelFloat>& ctx, float x, float y) {
+    // Float support placeholder
+    PF_PixelFloat result = {0,0,0,0};
+    return result;
+}
 
 template <typename Pixel>
 static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int start_y, int end_y)
@@ -501,7 +643,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
                 sample_x += 1.0f;
             }
             continue;
@@ -512,7 +654,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
                 sample_x += 1.0f;
             }
             continue;
@@ -524,7 +666,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, border_x, border_y);
                 proj_len += para_x;
             }
             continue;
@@ -546,6 +688,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
 
         for (int x = 0; x < ctx.width; ++x) {
             // Pre-calculate border point (used in multiple branches)
+            // Note: Border sampling is complex (varying Y), so we use full SampleBilinear -> now SamplePixel
             const float border_x = anchor_x_f + proj_len * para_x;
             const float border_y = anchor_y_f + proj_len * para_y;
 
@@ -554,21 +697,21 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
                 // Fully in positive shifted region
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
             }
             else if (dist < neg_eff_minus_feather) {
                 // Fully in negative shifted region
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
             }
             else if (dist > eff_minus_feather) {
                 // Anti-aliasing zone: transition from gap to positive shifted
-                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                Pixel border_pixel = SamplePixel(ctx, border_x, border_y);
                 
                 const float sx_shifted = sample_x - shift_vec_x;
                 const float sy_shifted = sample_y - shift_vec_y;
-                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                Pixel shifted_pixel = SamplePixel(ctx, sx_shifted, sy_shifted);
                 
                 // coverage: 0 at (eff - feather), 1 at (eff + feather)
                 float coverage = (dist - eff_minus_feather) * feather_inv;
@@ -576,11 +719,11 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             }
             else if (dist < neg_eff_plus_feather) {
                 // Anti-aliasing zone: transition from negative shifted to gap
-                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                Pixel border_pixel = SamplePixel(ctx, border_x, border_y);
                 
                 const float sx_shifted = sample_x + shift_vec_x;
                 const float sy_shifted = sample_y + shift_vec_y;
-                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                Pixel shifted_pixel = SamplePixel(ctx, sx_shifted, sy_shifted);
                 
                 // coverage: 1 at (-eff - feather), 0 at (-eff + feather)
                 float coverage = (neg_eff_plus_feather - dist) * feather_inv;
@@ -588,7 +731,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
             }
             else {
                 // Fully in gap region
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, border_x, border_y);
             }
 
             sample_x += 1.0f;
@@ -635,7 +778,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
 
         const float base_para = dy * para_y;
 
-        // Convert output buffer coordinates to input image coordinates
+        // sample_x and sample_y are in input image coordinate system
         float sample_x = 0.0f - ctx.output_origin_x;
         const float sample_y = yf_input;
 
@@ -650,7 +793,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
                 sample_x += 1.0f;
             }
             continue;
@@ -662,7 +805,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, border_x, border_y);
                 proj_len += para_x;
             }
             continue;
@@ -692,34 +835,31 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
                 // Shifted
                 const float sx = sample_x - shift_vec_x;
                 const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
             }
             else if (dist <= feather) {
                 // Anti-aliasing zone: transition from original to gap (around dist=0)
                 // dist is in [-feather, feather]
-                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
-                // Original pixel (SampleBilinear is safer than in_row[x] if we want consistent filtering, but in_row[x] is faster and sharper.
-                // However, since we are blending, using in_row[x] (Nearest) vs Bilinear might look slightly different.
-                // Let's use SampleBilinear for consistency with the rest of the image if we want subpixel correctness at this edge too,
-                // but 'in_row' implies integer coordinates. Let's stick to in_row[x] as 'original' source for simplicity and sharpness preservation.
-                // Pixel original_pixel = in_row[x]; 
-                // Actually, to match the "Bilinear" look of the stretched part, maybe we should just use in_row[x].
+                Pixel border_pixel = SamplePixel(ctx, border_x, border_y);
                 
-                // coverage: 0 at -feather, 1 at +feather.
-                // But wait, "Original" is when dist < 0. "Gap" is when dist > 0.
-                // So at dist = -feather, we want 100% Original. At dist = +feather, we want 100% Gap.
-                // BlendPixels(A, B, t): 0->A, 1->B.
-                // So A=Original, B=Border. t should be 0 at -feather, 1 at +feather.
-                float t = (dist - (-feather)) * feather_inv;
+                // coverage: 0 at feather (Original), 1 at -feather (Border).
+                // Wait, logic: dist < 0 is original.
+                // t should be 0 at dist = -feather, 1 at dist = feather.
+                // Original logic in step 364: 
+                // float t = (dist - (-feather)) * feather_inv;
+                // out_row[x] = BlendPixels(in_row[x], border_pixel, t);
+                // Correct.
+
+                float t = (dist + feather) * feather_inv;
                 out_row[x] = BlendPixels(in_row[x], border_pixel, t);
             }
             else if (dist > eff_minus_feather) {
                 // Anti-aliasing zone: transition from gap to shifted (around dist=eff)
-                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                Pixel border_pixel = SamplePixel(ctx, border_x, border_y);
                 
                 const float sx_shifted = sample_x - shift_vec_x;
                 const float sy_shifted = sample_y - shift_vec_y;
-                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                Pixel shifted_pixel = SamplePixel(ctx, sx_shifted, sy_shifted);
                 
                 // coverage: 0 at eff-feather (Border), 1 at eff+feather (Shifted)
                 float t = (dist - eff_minus_feather) * feather_inv;
@@ -727,7 +867,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             }
             else {
                 // Purely Border (Gap)
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, border_x, border_y);
             }
 
             sample_x += 1.0f;
@@ -774,7 +914,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
 
         const float base_para = dy * para_y;
 
-        // Convert output buffer coordinates to input image coordinates
+        // sample_x and sample_y are in input image coordinate system
         float sample_x = 0.0f - ctx.output_origin_x;
         const float sample_y = yf_input;
 
@@ -789,7 +929,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
                 sample_x += 1.0f;
             }
             continue;
@@ -801,7 +941,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             for (int x = 0; x < ctx.width; ++x) {
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, border_x, border_y);
                 proj_len += para_x;
             }
             continue;
@@ -831,12 +971,12 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
                 // Shifted
                 const float sx = sample_x + shift_vec_x;
                 const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, sx, sy);
             }
             else if (dist >= -feather) {
                 // Anti-aliasing zone: transition from border to original (around dist=0)
                 // dist is in [-feather, feather]
-                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                Pixel border_pixel = SamplePixel(ctx, border_x, border_y);
                 
                 // coverage: 0 at feather (Original), 1 at -feather (Border)
                 float t = (feather - dist) * feather_inv;
@@ -845,11 +985,11 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             else if (dist < neg_eff_plus_feather) {
                 // Anti-aliasing zone: transition from shifted to border (around dist=-eff)
                 // dist is in [-eff-feather, -eff+feather]
-                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                Pixel border_pixel = SamplePixel(ctx, border_x, border_y);
                 
                 const float sx_shifted = sample_x + shift_vec_x;
                 const float sy_shifted = sample_y + shift_vec_y;
-                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                Pixel shifted_pixel = SamplePixel(ctx, sx_shifted, sy_shifted);
                 
                 // coverage: 0 at -eff+feather (Border), 1 at -eff-feather (Shifted)
                 float t = (neg_eff_plus_feather - dist) * feather_inv;
@@ -857,7 +997,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             }
             else {
                 // Purely Border (Gap)
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                out_row[x] = SamplePixel(ctx, border_x, border_y);
             }
 
             sample_x += 1.0f;
@@ -875,6 +1015,8 @@ template <typename Pixel>
 static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)out_data;
+    
+    AEGP_SuiteHandler suites(in_data->pica_basicP);
 
     PF_EffectWorld* input = &params[STRETCH_INPUT]->u.ld;
 
@@ -955,6 +1097,12 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     ctx.para_y = para_y;
     ctx.output_origin_x = static_cast<float>(in_data->output_origin_x);
     ctx.output_origin_y = static_cast<float>(in_data->output_origin_y);
+    
+    // Set sampling suites
+    ctx.effect_ref = in_data->effect_ref;
+    AEFX_CLR_STRUCT(ctx.sample_params);
+    ctx.sampling8_suite = suites.Sampling8Suite1();
+    ctx.sampling16_suite = suites.Sampling16Suite1();
 
     const int max_threads = std::max(1u, std::thread::hardware_concurrency());
     const int height_clamped = std::max(height, 1);
