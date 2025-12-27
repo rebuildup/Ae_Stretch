@@ -441,15 +441,11 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         proj_len = dx0 * para_x + base_para;
         
         // Anti-aliasing feather width (in pixels)
-        const float feather = 0.5f;
+        const float feather = 2.0f;
 
         for (int x = 0; x < ctx.width; ++x) {
             float sx = sample_x;
             float sy = sample_y;
-
-            // Calculate distance from gap boundaries
-            float dist_from_neg_edge = dist + eff;  // Distance from -eff boundary
-            float dist_from_pos_edge = eff - dist;  // Distance from +eff boundary
 
             // Determine which region we're in and apply anti-aliasing at boundaries
             if (dist > eff + feather) {

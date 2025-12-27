@@ -59,7 +59,8 @@ resource 'PiPL' (16000) {
 	},
 		
 		AE_Effect_Global_OutFlags_2 {
-			0x08000000
+			// PF_OutFlag2_SUPPORTS_THREADED_RENDERING | PF_OutFlag2_REVEALS_ZERO_ALPHA
+			0x08000080
 		},
 		
 		AE_Effect_Match_Name {
