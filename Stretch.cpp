@@ -1166,6 +1166,7 @@ static PF_Err SmartRender(PF_InData* in_data, PF_OutData* out_data, PF_SmartRend
     if (!err && input_world && output_world) {
         // Call the regular render function
         PF_ParamDef params[STRETCH_NUM_PARAMS];
+        PF_ParamDef* param_ptrs[STRETCH_NUM_PARAMS];
         AEFX_CLR_STRUCT(params);
         
         // Setup params array (input layer is already checked out)
@@ -1181,8 +1182,13 @@ static PF_Err SmartRender(PF_InData* in_data, PF_OutData* out_data, PF_SmartRend
         ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_DIRECTION, in_data->current_time,
                               in_data->time_step, in_data->time_scale, &params[STRETCH_DIRECTION]));
         
+        // Create pointer array
+        for (int i = 0; i < STRETCH_NUM_PARAMS; i++) {
+            param_ptrs[i] = &params[i];
+        }
+        
         if (!err) {
-            err = Render(in_data, out_data, params, output_world);
+            err = Render(in_data, out_data, param_ptrs, output_world);
         }
         
         // Checkin parameters
