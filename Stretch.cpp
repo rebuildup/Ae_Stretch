@@ -489,7 +489,6 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         const float row_max = (std::max)(dist0, distN);
 
         const float base_para = dy * para_y;
-        float proj_len = dx0 * para_x + base_para;
 
         // sample_x and sample_y are in input image coordinate system
         float sample_x = 0.0f - ctx.output_origin_x;
