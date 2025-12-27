@@ -43,7 +43,7 @@ GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_
                           PF_OutFlag_PIX_INDEPENDENT |
                           PF_OutFlag_I_EXPAND_BUFFER;
     
-    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING |
+    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_SMART_RENDER |
                            PF_OutFlag2_REVEALS_ZERO_ALPHA;
     return PF_Err_NONE;
 }
@@ -1071,6 +1071,133 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     return PF_Err_NONE;
 }
 
+// PreRender for SmartFX
+static PF_Err PreRender(PF_InData* in_data, PF_OutData* out_data, PF_PreRenderExtra* extra)
+{
+    (void)out_data;
+    
+    PF_Err err = PF_Err_NONE;
+    PF_CheckoutResult in_result;
+    PF_ParamDef shift_param, anchor_param, angle_param;
+    
+    AEFX_CLR_STRUCT(shift_param);
+    AEFX_CLR_STRUCT(anchor_param);
+    AEFX_CLR_STRUCT(angle_param);
+    
+    // Checkout parameters to calculate required expansion
+    ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_SHIFT_AMOUNT, in_data->current_time,
+                          in_data->time_step, in_data->time_scale, &shift_param));
+    ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANCHOR_POINT, in_data->current_time,
+                          in_data->time_step, in_data->time_scale, &anchor_param));
+    ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANGLE, in_data->current_time,
+                          in_data->time_step, in_data->time_scale, &angle_param));
+    
+    if (err) return err;
+    
+    float shift_amount = shift_param.u.fs_d.value;
+    
+    // Calculate maximum possible expansion
+    A_long expansion = static_cast<A_long>(fabsf(shift_amount) * 2.0f) + 20;
+    
+    // Get the render request from After Effects
+    PF_RenderRequest req = extra->input->output_request;
+    
+    // Create an expanded input request
+    PF_RenderRequest input_req = req;
+    input_req.rect.left -= expansion;
+    input_req.rect.top -= expansion;
+    input_req.rect.right += expansion;
+    input_req.rect.bottom += expansion;
+    input_req.preserve_rgb_of_zero_alpha = TRUE;  // KEY: Preserve RGB of zero-alpha pixels
+    
+    // Checkout the input layer with the expanded request
+    ERR(extra->cb->checkout_layer(in_data->effect_ref,
+                                   STRETCH_INPUT,
+                                   STRETCH_INPUT,
+                                   &input_req,
+                                   in_data->current_time,
+                                   in_data->time_step,
+                                   in_data->time_scale,
+                                   &in_result));
+    
+    if (!err) {
+        // Set maximum possible output bounds
+        PF_LRect max_rect;
+        max_rect.left = -expansion;
+        max_rect.top = -expansion;
+        max_rect.right = in_data->width + expansion;
+        max_rect.bottom = in_data->height + expansion;
+        extra->output->max_result_rect = max_rect;
+        
+        // Set actual render rect
+        PF_LRect result = req.rect;
+        if (result.left < max_rect.left) result.left = max_rect.left;
+        if (result.top < max_rect.top) result.top = max_rect.top;
+        if (result.right > max_rect.right) result.right = max_rect.right;
+        if (result.bottom > max_rect.bottom) result.bottom = max_rect.bottom;
+        extra->output->result_rect = result;
+        
+        extra->output->solid = FALSE;
+    }
+    
+    ERR(PF_CHECKIN_PARAM(in_data, &shift_param));
+    ERR(PF_CHECKIN_PARAM(in_data, &anchor_param));
+    ERR(PF_CHECKIN_PARAM(in_data, &angle_param));
+    
+    return err;
+}
+
+// SmartRender for SmartFX
+static PF_Err SmartRender(PF_InData* in_data, PF_OutData* out_data, PF_SmartRenderExtra* extra)
+{
+    (void)out_data;
+    
+    PF_Err err = PF_Err_NONE;
+    PF_EffectWorld* input_world = NULL;
+    PF_EffectWorld* output_world = extra->output->output_world;
+    PF_WorldSuite2* wsP = NULL;
+    
+    // Get World Suite
+    ERR(AEFX_AcquireSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, NULL, (void**)&wsP));
+    
+    // Checkout input
+    ERR(extra->cb->checkout_layer_pixels(in_data->effect_ref, STRETCH_INPUT, &input_world));
+    
+    if (!err && input_world && output_world) {
+        // Call the regular render function
+        PF_ParamDef params[STRETCH_NUM_PARAMS];
+        AEFX_CLR_STRUCT(params);
+        
+        // Setup params array (input layer is already checked out)
+        params[STRETCH_INPUT].u.ld = *input_world;
+        
+        // Checkout other parameters
+        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_SHIFT_AMOUNT, in_data->current_time,
+                              in_data->time_step, in_data->time_scale, &params[STRETCH_SHIFT_AMOUNT]));
+        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANCHOR_POINT, in_data->current_time,
+                              in_data->time_step, in_data->time_scale, &params[STRETCH_ANCHOR_POINT]));
+        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANGLE, in_data->current_time,
+                              in_data->time_step, in_data->time_scale, &params[STRETCH_ANGLE]));
+        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_DIRECTION, in_data->current_time,
+                              in_data->time_step, in_data->time_scale, &params[STRETCH_DIRECTION]));
+        
+        if (!err) {
+            err = Render(in_data, out_data, params, output_world);
+        }
+        
+        // Checkin parameters
+        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_SHIFT_AMOUNT]));
+        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANCHOR_POINT]));
+        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANGLE]));
+        ERR2(PF_CHECKIN_PARAM(in_data, &params[STRETCH_DIRECTION]));
+    }
+    
+    // Release suite
+    ERR2(AEFX_ReleaseSuite(in_data, out_data, kPFWorldSuite, kPFWorldSuiteVersion2, NULL));
+    
+    return err;
+}
+
 static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)out_data;
@@ -1141,6 +1268,12 @@ PF_Err EffectMain(PF_Cmd cmd,
             break;
         case PF_Cmd_PARAMS_SETUP:
             err = ParamsSetup(in_data, out_data, params, output);
+            break;
+        case PF_Cmd_SMART_PRE_RENDER:
+            err = PreRender(in_data, out_data, reinterpret_cast<PF_PreRenderExtra*>(extra));
+            break;
+        case PF_Cmd_SMART_RENDER:
+            err = SmartRender(in_data, out_data, reinterpret_cast<PF_SmartRenderExtra*>(extra));
             break;
         case PF_Cmd_RENDER:
             err = Render(in_data, out_data, params, output);
