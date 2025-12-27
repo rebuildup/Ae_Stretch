@@ -532,22 +532,57 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         // General case: mix of negative side, gap, and positive side
         float dist = dist0;
         proj_len = dx0 * para_x + base_para;
+        
+        // Anti-aliasing feather width (in pixels)
+        const float feather = 0.5f;
 
         for (int x = 0; x < ctx.width; ++x) {
             float sx = sample_x;
             float sy = sample_y;
 
-            if (dist > eff) {
+            // Determine which region we're in and apply anti-aliasing at boundaries
+            if (dist > eff + feather) {
+                // Fully in positive shifted region
                 sx -= shift_vec_x;
                 sy -= shift_vec_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
-            else if (dist < -eff) {
+            else if (dist < -eff - feather) {
+                // Fully in negative shifted region
                 sx += shift_vec_x;
                 sy += shift_vec_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
             }
+            else if (dist > eff - feather && dist <= eff + feather) {
+                // Anti-aliasing zone: transition from gap to positive shifted
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                
+                float sx_shifted = sx - shift_vec_x;
+                float sy_shifted = sy - shift_vec_y;
+                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                
+                // coverage: 0 at (eff - feather), 1 at (eff + feather)
+                float coverage = (dist - (eff - feather)) / (2.0f * feather);
+                out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
+            }
+            else if (dist >= -eff - feather && dist < -eff + feather) {
+                // Anti-aliasing zone: transition from negative shifted to gap
+                const float border_x = anchor_x_f + proj_len * para_x;
+                const float border_y = anchor_y_f + proj_len * para_y;
+                Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                
+                float sx_shifted = sx + shift_vec_x;
+                float sy_shifted = sy + shift_vec_y;
+                Pixel shifted_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx_shifted, sy_shifted, ctx.input_width, ctx.input_height);
+                
+                // coverage: 1 at (-eff - feather), 0 at (-eff + feather)
+                float coverage = ((-eff + feather) - dist) / (2.0f * feather);
+                out_row[x] = BlendPixels(border_pixel, shifted_pixel, coverage);
+            }
             else {
+                // Fully in gap region
                 const float border_x = anchor_x_f + proj_len * para_x;
                 const float border_y = anchor_y_f + proj_len * para_y;
                 out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
