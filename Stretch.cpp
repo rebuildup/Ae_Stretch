@@ -300,8 +300,8 @@ static inline Pixel SampleNearestNeighbor(const A_u_char* base_ptr,
     return row[x];
 }
 
-// Bilinear sampling for anti-aliasing
-// This provides smooth edges by interpolating between neighboring pixels
+// Alpha-weighted bilinear sampling for proper anti-aliasing with transparency
+// This avoids black fringing by excluding transparent pixels from interpolation
 template <typename Pixel>
 static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     A_long rowbytes,
@@ -358,37 +358,73 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
         p11 = row1[x1];
     }
     
-    // Bilinear interpolation
+    // Bilinear weights
     float w00 = (1.0f - fx) * (1.0f - fy);
     float w10 = fx * (1.0f - fy);
     float w01 = (1.0f - fx) * fy;
     float w11 = fx * fy;
     
+    // Get alpha values for weighting
+    float a00 = Traits::ToFloat(p00.alpha);
+    float a10 = Traits::ToFloat(p10.alpha);
+    float a01 = Traits::ToFloat(p01.alpha);
+    float a11 = Traits::ToFloat(p11.alpha);
+    
+    // Alpha-weighted interpolation
+    // Pixels with zero or near-zero alpha don't contribute to color
+    const float alpha_threshold = 0.001f;
+    
+    float total_weight = 0.0f;
+    float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
+    
+    if (a00 > alpha_threshold) {
+        float weight = w00 * a00;
+        total_weight += weight;
+        r += Traits::ToFloat(p00.red) * weight;
+        g += Traits::ToFloat(p00.green) * weight;
+        b += Traits::ToFloat(p00.blue) * weight;
+        a += a00 * w00;
+    }
+    
+    if (a10 > alpha_threshold) {
+        float weight = w10 * a10;
+        total_weight += weight;
+        r += Traits::ToFloat(p10.red) * weight;
+        g += Traits::ToFloat(p10.green) * weight;
+        b += Traits::ToFloat(p10.blue) * weight;
+        a += a10 * w10;
+    }
+    
+    if (a01 > alpha_threshold) {
+        float weight = w01 * a01;
+        total_weight += weight;
+        r += Traits::ToFloat(p01.red) * weight;
+        g += Traits::ToFloat(p01.green) * weight;
+        b += Traits::ToFloat(p01.blue) * weight;
+        a += a01 * w01;
+    }
+    
+    if (a11 > alpha_threshold) {
+        float weight = w11 * a11;
+        total_weight += weight;
+        r += Traits::ToFloat(p11.red) * weight;
+        g += Traits::ToFloat(p11.green) * weight;
+        b += Traits::ToFloat(p11.blue) * weight;
+        a += a11 * w11;
+    }
+    
     Pixel result;
-    result.alpha = Traits::FromFloat(
-        Traits::ToFloat(p00.alpha) * w00 +
-        Traits::ToFloat(p10.alpha) * w10 +
-        Traits::ToFloat(p01.alpha) * w01 +
-        Traits::ToFloat(p11.alpha) * w11
-    );
-    result.red = Traits::FromFloat(
-        Traits::ToFloat(p00.red) * w00 +
-        Traits::ToFloat(p10.red) * w10 +
-        Traits::ToFloat(p01.red) * w01 +
-        Traits::ToFloat(p11.red) * w11
-    );
-    result.green = Traits::FromFloat(
-        Traits::ToFloat(p00.green) * w00 +
-        Traits::ToFloat(p10.green) * w10 +
-        Traits::ToFloat(p01.green) * w01 +
-        Traits::ToFloat(p11.green) * w11
-    );
-    result.blue = Traits::FromFloat(
-        Traits::ToFloat(p00.blue) * w00 +
-        Traits::ToFloat(p10.blue) * w10 +
-        Traits::ToFloat(p01.blue) * w01 +
-        Traits::ToFloat(p11.blue) * w11
-    );
+    
+    if (total_weight > alpha_threshold) {
+        // Normalize by total weight
+        result.red = Traits::FromFloat(r / total_weight);
+        result.green = Traits::FromFloat(g / total_weight);
+        result.blue = Traits::FromFloat(b / total_weight);
+        result.alpha = Traits::FromFloat(a);
+    } else {
+        // All pixels were transparent
+        std::memset(&result, 0, sizeof(Pixel));
+    }
     
     return result;
 }
