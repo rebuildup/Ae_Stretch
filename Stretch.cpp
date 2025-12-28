@@ -313,19 +313,33 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     using Traits = PixelTraits<Pixel>;
     
     // Get integer and fractional parts
-    int x0 = static_cast<int>(floorf(xf));
-    int y0 = static_cast<int>(floorf(yf));
-    float fx = xf - static_cast<float>(x0);
-    float fy = yf - static_cast<float>(y0);
+    const int x0 = static_cast<int>(floorf(xf));
+    const int y0 = static_cast<int>(floorf(yf));
+    const float fx = xf - static_cast<float>(x0);
+    const float fy = yf - static_cast<float>(y0);
     
-    int x1 = x0 + 1;
-    int y1 = y0 + 1;
+    // Fast path: if coordinate is (nearly) integer, skip bilinear interpolation
+    constexpr float epsilon = 0.001f;
+    if (fx < epsilon && fy < epsilon) {
+        // Check bounds
+        if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) {
+            const Pixel* row = reinterpret_cast<const Pixel*>(base_ptr + y0 * rowbytes);
+            return row[x0];
+        }
+        // Out of bounds - return transparent
+        Pixel result;
+        std::memset(&result, 0, sizeof(Pixel));
+        return result;
+    }
+    
+    const int x1 = x0 + 1;
+    const int y1 = y0 + 1;
     
     // Check if all four pixels are within bounds
-    bool in_bounds_00 = (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height);
-    bool in_bounds_10 = (x1 >= 0 && x1 < width && y0 >= 0 && y0 < height);
-    bool in_bounds_01 = (x0 >= 0 && x0 < width && y1 >= 0 && y1 < height);
-    bool in_bounds_11 = (x1 >= 0 && x1 < width && y1 >= 0 && y1 < height);
+    const bool in_bounds_00 = (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height);
+    const bool in_bounds_10 = (x1 >= 0 && x1 < width && y0 >= 0 && y0 < height);
+    const bool in_bounds_01 = (x0 >= 0 && x0 < width && y1 >= 0 && y1 < height);
+    const bool in_bounds_11 = (x1 >= 0 && x1 < width && y1 >= 0 && y1 < height);
     
     // If all pixels are out of bounds, return transparent
     if (!in_bounds_00 && !in_bounds_10 && !in_bounds_01 && !in_bounds_11) {
@@ -470,10 +484,25 @@ public:
     inline Pixel Sample(float x) const {
         using Traits = PixelTraits<Pixel>;
         constexpr float alpha_threshold = 0.001f;
+        constexpr float epsilon = 0.001f;
         
         const int x0 = static_cast<int>(floorf(x));
-        const int x1 = x0 + 1;
         const float fx = x - static_cast<float>(x0);
+        
+        // Fast path: if X is (nearly) integer and Y weight is heavily on one row
+        if (fx < epsilon) {
+            if (x0 >= 0 && x0 < width) {
+                // Check if we can use single row (when fy was near 0 or 1)
+                if (row0 && w0_y > 0.999f) {
+                    return row0[x0];
+                }
+                if (row1 && w1_y > 0.999f) {
+                    return row1[x0];
+                }
+            }
+        }
+        
+        const int x1 = x0 + 1;
         const float inv_fx = 1.0f - fx;
         
         // Check bounds for X
