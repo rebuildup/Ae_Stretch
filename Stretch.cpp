@@ -435,6 +435,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
 
 // Fast row sampler for cases where Y coordinate is constant across the row
 // This avoids repeated Y-coordinate calculations (floor, clamp, row pointer lookup)
+// Uses alpha-weighted interpolation to avoid black fringing with transparent pixels
 template <typename Pixel>
 class FastRowSampler {
 public:
@@ -450,59 +451,72 @@ public:
         width = w;
         height = h;
         
-        int y0 = static_cast<int>(floorf(y));
-        int y1 = y0 + 1;
-        float fy = y - static_cast<float>(y0);
+        const int y0 = static_cast<int>(floorf(y));
+        const int y1 = y0 + 1;
+        const float fy = y - static_cast<float>(y0);
         
         w0_y = 1.0f - fy;
         w1_y = fy;
         
         // Clamp Y and check bounds
-        bool y0_in = (y0 >= 0 && y0 < h);
-        bool y1_in = (y1 >= 0 && y1 < h);
+        const bool y0_in = (y0 >= 0 && y0 < h);
+        const bool y1_in = (y1 >= 0 && y1 < h);
         
-        if (y0_in) row0 = reinterpret_cast<const Pixel*>(base + y0 * rowbytes);
-        else row0 = nullptr;
-        
-        if (y1_in) row1 = reinterpret_cast<const Pixel*>(base + y1 * rowbytes);
-        else row1 = nullptr;
+        row0 = y0_in ? reinterpret_cast<const Pixel*>(base + y0 * rowbytes) : nullptr;
+        row1 = y1_in ? reinterpret_cast<const Pixel*>(base + y1 * rowbytes) : nullptr;
     }
     
-    // Sample at X coordinate
+    // Sample at X coordinate with alpha-weighted interpolation
     inline Pixel Sample(float x) const {
         using Traits = PixelTraits<Pixel>;
+        constexpr float alpha_threshold = 0.001f;
         
-        int x0 = static_cast<int>(floorf(x));
-        int x1 = x0 + 1;
-        float fx = x - static_cast<float>(x0);
+        const int x0 = static_cast<int>(floorf(x));
+        const int x1 = x0 + 1;
+        const float fx = x - static_cast<float>(x0);
+        const float inv_fx = 1.0f - fx;
         
         // Check bounds for X
-        bool x0_in = (x0 >= 0 && x0 < width);
-        bool x1_in = (x1 >= 0 && x1 < width);
+        const bool x0_in = (x0 >= 0 && x0 < width);
+        const bool x1_in = (x1 >= 0 && x1 < width);
         
-        // Weights
-        float w0_x = 1.0f - fx;
-        float w1_x = fx;
+        // If completely out of bounds, return transparent
+        if (!row0 && !row1) {
+            Pixel result;
+            std::memset(&result, 0, sizeof(Pixel));
+            return result;
+        }
         
-        float r = 0, g = 0, b = 0, a = 0;
+        float total_weight = 0.0f;
+        float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
         
         // Contribution from Row 0
         if (row0) {
             if (x0_in) {
                 const Pixel& p = row0[x0];
-                float w = w0_y * w0_x;
-                a += Traits::ToFloat(p.alpha) * w;
-                r += Traits::ToFloat(p.red) * w;
-                g += Traits::ToFloat(p.green) * w;
-                b += Traits::ToFloat(p.blue) * w;
+                const float pa = Traits::ToFloat(p.alpha);
+                if (pa > alpha_threshold) {
+                    const float w = w0_y * inv_fx;
+                    const float weight = w * pa;
+                    total_weight += weight;
+                    r += Traits::ToFloat(p.red) * weight;
+                    g += Traits::ToFloat(p.green) * weight;
+                    b += Traits::ToFloat(p.blue) * weight;
+                    a += pa * w;
+                }
             }
             if (x1_in) {
                 const Pixel& p = row0[x1];
-                float w = w0_y * w1_x;
-                a += Traits::ToFloat(p.alpha) * w;
-                r += Traits::ToFloat(p.red) * w;
-                g += Traits::ToFloat(p.green) * w;
-                b += Traits::ToFloat(p.blue) * w;
+                const float pa = Traits::ToFloat(p.alpha);
+                if (pa > alpha_threshold) {
+                    const float w = w0_y * fx;
+                    const float weight = w * pa;
+                    total_weight += weight;
+                    r += Traits::ToFloat(p.red) * weight;
+                    g += Traits::ToFloat(p.green) * weight;
+                    b += Traits::ToFloat(p.blue) * weight;
+                    a += pa * w;
+                }
             }
         }
         
@@ -510,27 +524,42 @@ public:
         if (row1) {
             if (x0_in) {
                 const Pixel& p = row1[x0];
-                float w = w1_y * w0_x;
-                a += Traits::ToFloat(p.alpha) * w;
-                r += Traits::ToFloat(p.red) * w;
-                g += Traits::ToFloat(p.green) * w;
-                b += Traits::ToFloat(p.blue) * w;
+                const float pa = Traits::ToFloat(p.alpha);
+                if (pa > alpha_threshold) {
+                    const float w = w1_y * inv_fx;
+                    const float weight = w * pa;
+                    total_weight += weight;
+                    r += Traits::ToFloat(p.red) * weight;
+                    g += Traits::ToFloat(p.green) * weight;
+                    b += Traits::ToFloat(p.blue) * weight;
+                    a += pa * w;
+                }
             }
             if (x1_in) {
                 const Pixel& p = row1[x1];
-                float w = w1_y * w1_x;
-                a += Traits::ToFloat(p.alpha) * w;
-                r += Traits::ToFloat(p.red) * w;
-                g += Traits::ToFloat(p.green) * w;
-                b += Traits::ToFloat(p.blue) * w;
+                const float pa = Traits::ToFloat(p.alpha);
+                if (pa > alpha_threshold) {
+                    const float w = w1_y * fx;
+                    const float weight = w * pa;
+                    total_weight += weight;
+                    r += Traits::ToFloat(p.red) * weight;
+                    g += Traits::ToFloat(p.green) * weight;
+                    b += Traits::ToFloat(p.blue) * weight;
+                    a += pa * w;
+                }
             }
         }
 
         Pixel result;
-        result.alpha = Traits::FromFloat(a);
-        result.red   = Traits::FromFloat(r);
-        result.green = Traits::FromFloat(g);
-        result.blue  = Traits::FromFloat(b);
+        if (total_weight > alpha_threshold) {
+            const float inv_weight = 1.0f / total_weight;
+            result.red = Traits::FromFloat(r * inv_weight);
+            result.green = Traits::FromFloat(g * inv_weight);
+            result.blue = Traits::FromFloat(b * inv_weight);
+            result.alpha = Traits::FromFloat(a);
+        } else {
+            std::memset(&result, 0, sizeof(Pixel));
+        }
         return result;
     }
 };
@@ -632,10 +661,12 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
 
         // Entire row is on the negative side beyond the gap -> all pixels shift in +direction
         if (row_max <= -eff) {
+            const float sy = sample_y + shift_vec_y;
+            FastRowSampler<Pixel> sampler;
+            sampler.Setup(ctx.input_base, ctx.input_rowbytes, ctx.input_width, ctx.input_height, sy);
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
-                const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = sampler.Sample(sx);
                 sample_x += 1.0f;
             }
             continue;
@@ -643,10 +674,12 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
 
         // Entire row is on the positive side beyond the gap -> all pixels shift in -direction
         if (row_min >= eff) {
+            const float sy = sample_y - shift_vec_y;
+            FastRowSampler<Pixel> sampler;
+            sampler.Setup(ctx.input_base, ctx.input_rowbytes, ctx.input_width, ctx.input_height, sy);
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
-                const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = sampler.Sample(sx);
                 sample_x += 1.0f;
             }
             continue;
@@ -782,10 +815,12 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
 
         // Entire row is fully shifted (dist >= eff)
         if (row_min >= eff) {
+            const float sy = sample_y - shift_vec_y;
+            FastRowSampler<Pixel> sampler;
+            sampler.Setup(ctx.input_base, ctx.input_rowbytes, ctx.input_width, ctx.input_height, sy);
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x - shift_vec_x;
-                const float sy = sample_y - shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = sampler.Sample(sx);
                 sample_x += 1.0f;
             }
             continue;
@@ -918,10 +953,12 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
 
         // Entire row is fully shifted (dist <= -eff)
         if (row_max <= -eff) {
+            const float sy = sample_y + shift_vec_y;
+            FastRowSampler<Pixel> sampler;
+            sampler.Setup(ctx.input_base, ctx.input_rowbytes, ctx.input_width, ctx.input_height, sy);
             for (int x = 0; x < ctx.width; ++x) {
                 const float sx = sample_x + shift_vec_x;
-                const float sy = sample_y + shift_vec_y;
-                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sx, sy, ctx.input_width, ctx.input_height);
+                out_row[x] = sampler.Sample(sx);
                 sample_x += 1.0f;
             }
             continue;
