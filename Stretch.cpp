@@ -37,13 +37,11 @@ GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_
 
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
     
-    // Enable expanding output buffer beyond layer bounds
-    // This allows the effect to render pixels outside the original layer boundaries
     out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE | 
-                          PF_OutFlag_PIX_INDEPENDENT |
-                          PF_OutFlag_I_EXPAND_BUFFER;
+                          PF_OutFlag_PIX_INDEPENDENT;
     
     out_data->out_flags2 = PF_OutFlag2_SUPPORTS_SMART_RENDER |
+                           PF_OutFlag2_SUPPORTS_THREADED_RENDERING |
                            PF_OutFlag2_REVEALS_ZERO_ALPHA;
     return PF_Err_NONE;
 }
@@ -1095,19 +1093,69 @@ static PF_Err PreRender(PF_InData* in_data, PF_OutData* out_data, PF_PreRenderEx
     if (err) return err;
     
     float shift_amount = static_cast<float>(shift_param.u.fs_d.value);
+    int anchor_x = (anchor_param.u.td.x_value >> 16);
+    int anchor_y = (anchor_param.u.td.y_value >> 16);
+    float angle_deg = static_cast<float>(angle_param.u.ad.value >> 16);
+    float angle_rad = angle_deg * (static_cast<float>(M_PI) / 180.0f);
     
-    // Calculate maximum possible expansion
-    A_long expansion = static_cast<A_long>(fabsf(shift_amount) * 2.0f) + 20;
+    // Downsample adjustment
+    const float downsample_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
+    const float downsample_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
+    const float downsample = std::min(downsample_x, downsample_y);
+    float effective_shift = (downsample > 0.0f) ? (shift_amount / downsample) : shift_amount;
+    
+    // Calculate shift vector
+    float sn = std::sin(angle_rad);
+    float cs = std::cos(angle_rad);
+    float shift_vec_x = -sn * effective_shift;
+    float shift_vec_y = cs * effective_shift;
+    
+    // Calculate expansion needed by checking all four corners
+    int input_width = in_data->width;
+    int input_height = in_data->height;
+    
+    float min_x = 0, max_x = static_cast<float>(input_width);
+    float min_y = 0, max_y = static_cast<float>(input_height);
+    
+    float corners_x[4] = {0, static_cast<float>(input_width), 0, static_cast<float>(input_width)};
+    float corners_y[4] = {0, 0, static_cast<float>(input_height), static_cast<float>(input_height)};
+    
+    for (int i = 0; i < 4; ++i) {
+        float x_shifted = corners_x[i] + shift_vec_x;
+        float y_shifted = corners_y[i] + shift_vec_y;
+        
+        min_x = std::min(min_x, x_shifted);
+        max_x = std::max(max_x, x_shifted);
+        min_y = std::min(min_y, y_shifted);
+        max_y = std::max(max_y, y_shifted);
+    }
+    
+    int expand_left = static_cast<int>(std::ceil(-min_x));
+    int expand_top = static_cast<int>(std::ceil(-min_y));
+    int expand_right = static_cast<int>(std::ceil(max_x - input_width));
+    int expand_bottom = static_cast<int>(std::ceil(max_y - input_height));
+    
+    if (expand_left < 0) expand_left = 0;
+    if (expand_top < 0) expand_top = 0;
+    if (expand_right < 0) expand_right = 0;
+    if (expand_bottom < 0) expand_bottom = 0;
+    
+    // Add some padding for safety
+    int padding = 5;
+    expand_left += padding;
+    expand_top += padding;
+    expand_right += padding;
+    expand_bottom += padding;
     
     // Get the render request from After Effects
     PF_RenderRequest req = extra->input->output_request;
     
     // Create an expanded input request
     PF_RenderRequest input_req = req;
-    input_req.rect.left -= expansion;
-    input_req.rect.top -= expansion;
-    input_req.rect.right += expansion;
-    input_req.rect.bottom += expansion;
+    input_req.rect.left -= expand_left;
+    input_req.rect.top -= expand_top;
+    input_req.rect.right += expand_right;
+    input_req.rect.bottom += expand_bottom;
     input_req.preserve_rgb_of_zero_alpha = TRUE;  // KEY: Preserve RGB of zero-alpha pixels
     
     // Checkout the input layer with the expanded request
@@ -1123,10 +1171,10 @@ static PF_Err PreRender(PF_InData* in_data, PF_OutData* out_data, PF_PreRenderEx
     if (!err) {
         // Set maximum possible output bounds
         PF_LRect max_rect;
-        max_rect.left = -expansion;
-        max_rect.top = -expansion;
-        max_rect.right = in_data->width + expansion;
-        max_rect.bottom = in_data->height + expansion;
+        max_rect.left = -expand_left;
+        max_rect.top = -expand_top;
+        max_rect.right = input_width + expand_right;
+        max_rect.bottom = input_height + expand_bottom;
         extra->output->max_result_rect = max_rect;
         
         // Set actual render rect
@@ -1265,9 +1313,6 @@ PF_Err EffectMain(PF_Cmd cmd,
             break;
         case PF_Cmd_GLOBAL_SETUP:
             err = GlobalSetup(in_data, out_data, params, output);
-            break;
-        case PF_Cmd_FRAME_SETUP:
-            err = FrameSetup(in_data, out_data, params, output);
             break;
         case PF_Cmd_PARAMS_SETUP:
             err = ParamsSetup(in_data, out_data, params, output);
