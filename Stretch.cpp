@@ -1154,17 +1154,37 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     ctx.output_origin_x = static_cast<float>(in_data->output_origin_x);
     ctx.output_origin_y = static_cast<float>(in_data->output_origin_y);
 
-    // Use main thread only to avoid issues with AE API calls from std::thread
-    if (direction == 1) {
-        ProcessRowsBoth(ctx, 0, height);
+    // Parallel processing using std::thread
+    // Safe because we only use our own SampleBilinear (no AE API calls)
+    const int num_threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+    const int rows_per_thread = (height + num_threads - 1) / num_threads;
+    
+    std::vector<std::thread> threads;
+    threads.reserve(num_threads);
+    
+    for (int t = 0; t < num_threads; ++t) {
+        const int start_y = t * rows_per_thread;
+        const int end_y = std::min(start_y + rows_per_thread, height);
+        
+        if (start_y >= height) break;
+        
+        threads.emplace_back([&ctx, direction, start_y, end_y]() {
+            if (direction == 1) {
+                ProcessRowsBoth(ctx, start_y, end_y);
+            }
+            else if (direction == 2) {
+                ProcessRowsForward(ctx, start_y, end_y);
+            }
+            else {
+                ProcessRowsBackward(ctx, start_y, end_y);
+            }
+        });
     }
-    else if (direction == 2) {
-        ProcessRowsForward(ctx, 0, height);
+    
+    // Wait for all threads to complete
+    for (auto& t : threads) {
+        t.join();
     }
-    else {
-        ProcessRowsBackward(ctx, 0, height);
-    }
-
 
     return PF_Err_NONE;
 }
