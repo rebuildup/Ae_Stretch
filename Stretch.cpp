@@ -41,7 +41,8 @@ GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_
                           PF_OutFlag_PIX_INDEPENDENT |
                           PF_OutFlag_I_EXPAND_BUFFER;
     
-    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
+    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING |
+                           PF_OutFlag2_REVEALS_ZERO_ALPHA;
     
     return PF_Err_NONE;
 }
