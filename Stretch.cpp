@@ -38,13 +38,134 @@ GlobalSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_
     out_data->my_version = PF_VERSION(MAJOR_VERSION, MINOR_VERSION, BUG_VERSION, STAGE_VERSION, BUILD_VERSION);
     
     out_data->out_flags = PF_OutFlag_DEEP_COLOR_AWARE | 
-                          PF_OutFlag_PIX_INDEPENDENT;
+                          PF_OutFlag_PIX_INDEPENDENT |
+                          PF_OutFlag_I_EXPAND_BUFFER;
     
-    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_SMART_RENDER |
-                           PF_OutFlag2_SUPPORTS_THREADED_RENDERING |
-                           PF_OutFlag2_REVEALS_ZERO_ALPHA;
+    out_data->out_flags2 = PF_OutFlag2_SUPPORTS_THREADED_RENDERING;
+    
     return PF_Err_NONE;
 }
+
+static PF_Err
+FrameSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
+{
+    (void)output;
+    
+    PF_Err err = PF_Err_NONE;
+    
+    // Get input dimensions
+    PF_LayerDef* input = &params[STRETCH_INPUT]->u.ld;
+    const int input_width = input->width;
+    const int input_height = input->height;
+    
+    if (input_width <= 0 || input_height <= 0) {
+        return PF_Err_NONE;
+    }
+    
+    // Get parameters
+    const float shift_amount = static_cast<float>(params[STRETCH_SHIFT_AMOUNT]->u.fs_d.value);
+    float angle_deg = static_cast<float>(params[STRETCH_ANGLE]->u.ad.value >> 16);
+    const int direction = params[STRETCH_DIRECTION]->u.pd.value;
+    
+    // Downsample adjustment
+    const float downsample_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
+    const float downsample_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
+    const float downsample = std::min(downsample_x, downsample_y);
+    
+    // Effective shift in pixels
+    float effective_shift = (downsample > 0.0f) ? (shift_amount / downsample) : shift_amount;
+    
+    // If no shift, no expansion needed
+    if (std::abs(effective_shift) < 0.01f) {
+        return PF_Err_NONE;
+    }
+    
+    // Direction adjustment (Both mode splits the shift)
+    if (direction == 1) { // Both
+        effective_shift *= 0.5f;
+    }
+    
+    // Calculate shift vector from angle
+    const float angle_rad = angle_deg * (static_cast<float>(M_PI) / 180.0f);
+    const float sn = std::sin(angle_rad);
+    const float cs = std::cos(angle_rad);
+    
+    // Perpendicular vector (direction of shift)
+    const float perp_x = -sn;
+    const float perp_y = cs;
+    
+    // Calculate maximum shift vector
+    const float shift_vec_x = perp_x * effective_shift;
+    const float shift_vec_y = perp_y * effective_shift;
+    
+    // Calculate bounding box
+    float min_x = 0.0f;
+    float max_x = static_cast<float>(input_width);
+    float min_y = 0.0f;
+    float max_y = static_cast<float>(input_height);
+    
+    const float corners[4][2] = {
+        {0.0f, 0.0f},
+        {static_cast<float>(input_width), 0.0f},
+        {0.0f, static_cast<float>(input_height)},
+        {static_cast<float>(input_width), static_cast<float>(input_height)}
+    };
+    
+    for (int i = 0; i < 4; i++) {
+        const float x = corners[i][0];
+        const float y = corners[i][1];
+        
+        if (direction == 1) { // Both
+            float x_pos = x + shift_vec_x;
+            float y_pos = y + shift_vec_y;
+            float x_neg = x - shift_vec_x;
+            float y_neg = y - shift_vec_y;
+            
+            min_x = std::min({min_x, x_pos, x_neg});
+            max_x = std::max({max_x, x_pos, x_neg});
+            min_y = std::min({min_y, y_pos, y_neg});
+            max_y = std::max({max_y, y_pos, y_neg});
+        }
+        else if (direction == 2) { // Forward
+            float x_shifted = x - shift_vec_x;
+            float y_shifted = y - shift_vec_y;
+            
+            min_x = std::min(min_x, x_shifted);
+            max_x = std::max(max_x, x_shifted);
+            min_y = std::min(min_y, y_shifted);
+            max_y = std::max(max_y, y_shifted);
+        }
+        else { // Backward
+            float x_shifted = x + shift_vec_x;
+            float y_shifted = y + shift_vec_y;
+            
+            min_x = std::min(min_x, x_shifted);
+            max_x = std::max(max_x, x_shifted);
+            min_y = std::min(min_y, y_shifted);
+            max_y = std::max(max_y, y_shifted);
+        }
+    }
+    
+    // Calculate required expansion
+    int expand_left = static_cast<int>(std::ceil(-min_x));
+    int expand_top = static_cast<int>(std::ceil(-min_y));
+    int expand_right = static_cast<int>(std::ceil(max_x - input_width));
+    int expand_bottom = static_cast<int>(std::ceil(max_y - input_height));
+    
+    if (expand_left < 0) expand_left = 0;
+    if (expand_top < 0) expand_top = 0;
+    if (expand_right < 0) expand_right = 0;
+    if (expand_bottom < 0) expand_bottom = 0;
+    
+    // Set output dimensions and origin
+    out_data->width = input_width + expand_left + expand_right;
+    out_data->height = input_height + expand_top + expand_bottom;
+    out_data->origin.h = static_cast<short>(expand_left);
+    out_data->origin.v = static_cast<short>(expand_top);
+    
+    return err;
+}
+
 
 
 static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
@@ -937,187 +1058,8 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
         ProcessRowsBackward(ctx, 0, height);
     }
 
+
     return PF_Err_NONE;
-}
-
-// PreRender for SmartFX
-static PF_Err PreRender(PF_InData* in_data, PF_OutData* out_data, PF_PreRenderExtra* extra)
-{
-    (void)out_data;
-    
-    PF_Err err = PF_Err_NONE;
-    PF_CheckoutResult in_result;
-    PF_ParamDef shift_param, anchor_param, angle_param;
-    
-    AEFX_CLR_STRUCT(shift_param);
-    AEFX_CLR_STRUCT(anchor_param);
-    AEFX_CLR_STRUCT(angle_param);
-    
-    // Checkout parameters to calculate required expansion
-    ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_SHIFT_AMOUNT, in_data->current_time,
-                          in_data->time_step, in_data->time_scale, &shift_param));
-    ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANCHOR_POINT, in_data->current_time,
-                          in_data->time_step, in_data->time_scale, &anchor_param));
-    ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANGLE, in_data->current_time,
-                          in_data->time_step, in_data->time_scale, &angle_param));
-    
-    if (err) return err;
-    
-    float shift_amount = static_cast<float>(shift_param.u.fs_d.value);
-    int anchor_x = (anchor_param.u.td.x_value >> 16);
-    int anchor_y = (anchor_param.u.td.y_value >> 16);
-    float angle_deg = static_cast<float>(angle_param.u.ad.value >> 16);
-    float angle_rad = angle_deg * (static_cast<float>(M_PI) / 180.0f);
-    
-    // Downsample adjustment
-    const float downsample_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
-    const float downsample_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
-    const float downsample = std::min(downsample_x, downsample_y);
-    float effective_shift = (downsample > 0.0f) ? (shift_amount / downsample) : shift_amount;
-    
-    // Calculate shift vector
-    float sn = std::sin(angle_rad);
-    float cs = std::cos(angle_rad);
-    float shift_vec_x = -sn * effective_shift;
-    float shift_vec_y = cs * effective_shift;
-    
-    // Calculate expansion needed by checking all four corners
-    int input_width = in_data->width;
-    int input_height = in_data->height;
-    
-    float min_x = 0, max_x = static_cast<float>(input_width);
-    float min_y = 0, max_y = static_cast<float>(input_height);
-    
-    float corners_x[4] = {0, static_cast<float>(input_width), 0, static_cast<float>(input_width)};
-    float corners_y[4] = {0, 0, static_cast<float>(input_height), static_cast<float>(input_height)};
-    
-    for (int i = 0; i < 4; ++i) {
-        float x_shifted = corners_x[i] + shift_vec_x;
-        float y_shifted = corners_y[i] + shift_vec_y;
-        
-        min_x = std::min(min_x, x_shifted);
-        max_x = std::max(max_x, x_shifted);
-        min_y = std::min(min_y, y_shifted);
-        max_y = std::max(max_y, y_shifted);
-    }
-    
-    int expand_left = static_cast<int>(std::ceil(-min_x));
-    int expand_top = static_cast<int>(std::ceil(-min_y));
-    int expand_right = static_cast<int>(std::ceil(max_x - input_width));
-    int expand_bottom = static_cast<int>(std::ceil(max_y - input_height));
-    
-    if (expand_left < 0) expand_left = 0;
-    if (expand_top < 0) expand_top = 0;
-    if (expand_right < 0) expand_right = 0;
-    if (expand_bottom < 0) expand_bottom = 0;
-    
-    // Add some padding for safety
-    int padding = 5;
-    expand_left += padding;
-    expand_top += padding;
-    expand_right += padding;
-    expand_bottom += padding;
-    
-    // Get the render request from After Effects
-    PF_RenderRequest req = extra->input->output_request;
-    
-    // Create an expanded input request
-    PF_RenderRequest input_req = req;
-    input_req.rect.left -= expand_left;
-    input_req.rect.top -= expand_top;
-    input_req.rect.right += expand_right;
-    input_req.rect.bottom += expand_bottom;
-    input_req.preserve_rgb_of_zero_alpha = TRUE;  // KEY: Preserve RGB of zero-alpha pixels
-    
-    // Checkout the input layer with the expanded request
-    ERR(extra->cb->checkout_layer(in_data->effect_ref,
-                                   STRETCH_INPUT,
-                                   STRETCH_INPUT,
-                                   &input_req,
-                                   in_data->current_time,
-                                   in_data->time_step,
-                                   in_data->time_scale,
-                                   &in_result));
-    
-    if (!err) {
-        // Set maximum possible output bounds
-        PF_LRect max_rect;
-        max_rect.left = -expand_left;
-        max_rect.top = -expand_top;
-        max_rect.right = input_width + expand_right;
-        max_rect.bottom = input_height + expand_bottom;
-        extra->output->max_result_rect = max_rect;
-        
-        // Set actual render rect
-        PF_LRect result = req.rect;
-        if (result.left < max_rect.left) result.left = max_rect.left;
-        if (result.top < max_rect.top) result.top = max_rect.top;
-        if (result.right > max_rect.right) result.right = max_rect.right;
-        if (result.bottom > max_rect.bottom) result.bottom = max_rect.bottom;
-        extra->output->result_rect = result;
-        
-        extra->output->solid = FALSE;
-    }
-    
-    ERR(PF_CHECKIN_PARAM(in_data, &shift_param));
-    ERR(PF_CHECKIN_PARAM(in_data, &anchor_param));
-    ERR(PF_CHECKIN_PARAM(in_data, &angle_param));
-    
-    return err;
-}
-
-// Forward declaration
-static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output);
-
-// SmartRender for SmartFX
-static PF_Err SmartRender(PF_InData* in_data, PF_OutData* out_data, PF_SmartRenderExtra* extra)
-{
-    PF_Err err = PF_Err_NONE;
-    PF_EffectWorld* input_world = NULL;
-    PF_EffectWorld* output_world = NULL;
-    
-    // Checkout input
-    ERR(extra->cb->checkout_layer_pixels(in_data->effect_ref, STRETCH_INPUT, &input_world));
-    
-    // Get output world
-    ERR(extra->cb->checkout_output(in_data->effect_ref, &output_world));
-    
-    if (!err && input_world && output_world) {
-        // Call the regular render function
-        PF_ParamDef params[STRETCH_NUM_PARAMS];
-        PF_ParamDef* param_ptrs[STRETCH_NUM_PARAMS];
-        AEFX_CLR_STRUCT(params);
-        
-        // Setup params array (input layer is already checked out)
-        params[STRETCH_INPUT].u.ld = *input_world;
-        
-        // Checkout other parameters
-        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_SHIFT_AMOUNT, in_data->current_time,
-                              in_data->time_step, in_data->time_scale, &params[STRETCH_SHIFT_AMOUNT]));
-        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANCHOR_POINT, in_data->current_time,
-                              in_data->time_step, in_data->time_scale, &params[STRETCH_ANCHOR_POINT]));
-        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_ANGLE, in_data->current_time,
-                              in_data->time_step, in_data->time_scale, &params[STRETCH_ANGLE]));
-        ERR(PF_CHECKOUT_PARAM(in_data, STRETCH_DIRECTION, in_data->current_time,
-                              in_data->time_step, in_data->time_scale, &params[STRETCH_DIRECTION]));
-        
-        // Create pointer array
-        for (int i = 0; i < STRETCH_NUM_PARAMS; i++) {
-            param_ptrs[i] = &params[i];
-        }
-        
-        if (!err) {
-            err = Render(in_data, out_data, param_ptrs, output_world);
-        }
-        
-        // Checkin parameters
-        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_SHIFT_AMOUNT]));
-        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANCHOR_POINT]));
-        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_ANGLE]));
-        ERR(PF_CHECKIN_PARAM(in_data, &params[STRETCH_DIRECTION]));
-    }
-    
-    return err;
 }
 
 static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
@@ -1185,14 +1127,11 @@ PF_Err EffectMain(PF_Cmd cmd,
         case PF_Cmd_GLOBAL_SETUP:
             err = GlobalSetup(in_data, out_data, params, output);
             break;
+        case PF_Cmd_FRAME_SETUP:
+            err = FrameSetup(in_data, out_data, params, output);
+            break;
         case PF_Cmd_PARAMS_SETUP:
             err = ParamsSetup(in_data, out_data, params, output);
-            break;
-        case PF_Cmd_SMART_PRE_RENDER:
-            err = PreRender(in_data, out_data, reinterpret_cast<PF_PreRenderExtra*>(extra));
-            break;
-        case PF_Cmd_SMART_RENDER:
-            err = SmartRender(in_data, out_data, reinterpret_cast<PF_SmartRenderExtra*>(extra));
             break;
         case PF_Cmd_RENDER:
             err = Render(in_data, out_data, params, output);
