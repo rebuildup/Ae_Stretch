@@ -358,27 +358,30 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
         p11 = row1[x1];
     }
     
-    // Bilinear weights
-    float w00 = (1.0f - fx) * (1.0f - fy);
-    float w10 = fx * (1.0f - fy);
-    float w01 = (1.0f - fx) * fy;
-    float w11 = fx * fy;
+    // Bilinear weights - pre-compute (1-fx) and (1-fy) to avoid redundant subtraction
+    const float inv_fx = 1.0f - fx;
+    const float inv_fy = 1.0f - fy;
+    const float w00 = inv_fx * inv_fy;
+    const float w10 = fx * inv_fy;
+    const float w01 = inv_fx * fy;
+    const float w11 = fx * fy;
     
-    // Get alpha values for weighting
-    float a00 = Traits::ToFloat(p00.alpha);
-    float a10 = Traits::ToFloat(p10.alpha);
-    float a01 = Traits::ToFloat(p01.alpha);
-    float a11 = Traits::ToFloat(p11.alpha);
+    // Get alpha values for weighting - convert once and reuse
+    const float a00 = Traits::ToFloat(p00.alpha);
+    const float a10 = Traits::ToFloat(p10.alpha);
+    const float a01 = Traits::ToFloat(p01.alpha);
+    const float a11 = Traits::ToFloat(p11.alpha);
     
     // Alpha-weighted interpolation
     // Pixels with zero or near-zero alpha don't contribute to color
-    const float alpha_threshold = 0.001f;
+    constexpr float alpha_threshold = 0.001f;
     
     float total_weight = 0.0f;
     float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
     
+    // Process each pixel - convert RGB values only when alpha is significant
     if (a00 > alpha_threshold) {
-        float weight = w00 * a00;
+        const float weight = w00 * a00;
         total_weight += weight;
         r += Traits::ToFloat(p00.red) * weight;
         g += Traits::ToFloat(p00.green) * weight;
@@ -387,7 +390,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     }
     
     if (a10 > alpha_threshold) {
-        float weight = w10 * a10;
+        const float weight = w10 * a10;
         total_weight += weight;
         r += Traits::ToFloat(p10.red) * weight;
         g += Traits::ToFloat(p10.green) * weight;
@@ -396,7 +399,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     }
     
     if (a01 > alpha_threshold) {
-        float weight = w01 * a01;
+        const float weight = w01 * a01;
         total_weight += weight;
         r += Traits::ToFloat(p01.red) * weight;
         g += Traits::ToFloat(p01.green) * weight;
@@ -405,7 +408,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     }
     
     if (a11 > alpha_threshold) {
-        float weight = w11 * a11;
+        const float weight = w11 * a11;
         total_weight += weight;
         r += Traits::ToFloat(p11.red) * weight;
         g += Traits::ToFloat(p11.green) * weight;
@@ -416,10 +419,11 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     Pixel result;
     
     if (total_weight > alpha_threshold) {
-        // Normalize by total weight
-        result.red = Traits::FromFloat(r / total_weight);
-        result.green = Traits::FromFloat(g / total_weight);
-        result.blue = Traits::FromFloat(b / total_weight);
+        // Normalize by total weight - use multiplication by inverse instead of division
+        const float inv_weight = 1.0f / total_weight;
+        result.red = Traits::FromFloat(r * inv_weight);
+        result.green = Traits::FromFloat(g * inv_weight);
+        result.blue = Traits::FromFloat(b * inv_weight);
         result.alpha = Traits::FromFloat(a);
     } else {
         // All pixels were transparent
