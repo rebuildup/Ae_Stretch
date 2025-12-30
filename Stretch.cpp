@@ -835,29 +835,6 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
         float sample_x = 0.0f - ctx.output_origin_x;
         const float sample_y = yf_input;
 
-        // Entire row is behind the line (dist < 0) -> unchanged (copy from input)
-        if (row_max < 0.0f) {
-            // Need to check if yf_input is within input bounds
-            const int y_input = static_cast<int>(yf_input + 0.5f);
-            if (y_input >= 0 && y_input < ctx.input_height) {
-                const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y_input) * ctx.input_rowbytes);
-                // Copy only the portion that overlaps with input
-                for (int x = 0; x < ctx.width; ++x) {
-                    const float x_input = sample_x + static_cast<float>(x);
-                    const int xi = static_cast<int>(x_input + 0.5f);
-                    if (xi >= 0 && xi < ctx.input_width) {
-                        out_row[x] = in_row[xi];
-                    } else {
-                        std::memset(&out_row[x], 0, sizeof(Pixel));
-                    }
-                }
-            } else {
-                // Out of input bounds, fill with transparent
-                std::memset(out_row, 0, sizeof(Pixel) * ctx.width);
-            }
-            continue;
-        }
-
         // Entire row is fully shifted (dist >= eff)
         if (row_min >= eff) {
             const float sy = sample_y - shift_vec_y;
@@ -883,8 +860,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             continue;
         }
 
-        // General case
-        // General case
+        // General case - always process pixel by pixel
         float dist = dist0;
         float proj_len = dx0 * para_x + base_para;
 
@@ -982,29 +958,6 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
         float sample_x = 0.0f - ctx.output_origin_x;
         const float sample_y = yf_input;
 
-        // Entire row is in front of the line (dist > 0) -> unchanged (copy from input)
-        if (row_min > 0.0f) {
-            // Need to check if yf_input is within input bounds
-            const int y_input = static_cast<int>(yf_input + 0.5f);
-            if (y_input >= 0 && y_input < ctx.input_height) {
-                const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y_input) * ctx.input_rowbytes);
-                // Copy only the portion that overlaps with input
-                for (int x = 0; x < ctx.width; ++x) {
-                    const float x_input = sample_x + static_cast<float>(x);
-                    const int xi = static_cast<int>(x_input + 0.5f);
-                    if (xi >= 0 && xi < ctx.input_width) {
-                        out_row[x] = in_row[xi];
-                    } else {
-                        std::memset(&out_row[x], 0, sizeof(Pixel));
-                    }
-                }
-            } else {
-                // Out of input bounds, fill with transparent
-                std::memset(out_row, 0, sizeof(Pixel) * ctx.width);
-            }
-            continue;
-        }
-
         // Entire row is fully shifted (dist <= -eff)
         if (row_max <= -eff) {
             const float sy = sample_y + shift_vec_y;
@@ -1030,8 +983,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             continue;
         }
 
-        // General case
-        // General case
+        // General case - always process pixel by pixel
         float dist = dist0;
         float proj_len = dx0 * para_x + base_para;
 
