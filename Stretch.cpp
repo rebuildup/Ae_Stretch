@@ -828,7 +828,6 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
         const float row_max = (std::max)(dist0, distN);
 
         Pixel* out_row = reinterpret_cast<Pixel*>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
-        const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
 
         const float base_para = dy * para_y;
 
@@ -836,9 +835,26 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
         float sample_x = 0.0f - ctx.output_origin_x;
         const float sample_y = yf_input;
 
-        // Entire row is behind the line (dist < 0) -> unchanged
+        // Entire row is behind the line (dist < 0) -> unchanged (copy from input)
         if (row_max < 0.0f) {
-            std::memcpy(out_row, in_row, sizeof(Pixel) * ctx.width);
+            // Need to check if yf_input is within input bounds
+            const int y_input = static_cast<int>(yf_input + 0.5f);
+            if (y_input >= 0 && y_input < ctx.input_height) {
+                const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y_input) * ctx.input_rowbytes);
+                // Copy only the portion that overlaps with input
+                for (int x = 0; x < ctx.width; ++x) {
+                    const float x_input = sample_x + static_cast<float>(x);
+                    const int xi = static_cast<int>(x_input + 0.5f);
+                    if (xi >= 0 && xi < ctx.input_width) {
+                        out_row[x] = in_row[xi];
+                    } else {
+                        std::memset(&out_row[x], 0, sizeof(Pixel));
+                    }
+                }
+            } else {
+                // Out of input bounds, fill with transparent
+                std::memset(out_row, 0, sizeof(Pixel) * ctx.width);
+            }
             continue;
         }
 
@@ -884,8 +900,8 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
             const float border_y = anchor_y_f + proj_len * para_y;
 
             if (dist < -feather) {
-                // Unchanged
-                out_row[x] = in_row[x];
+                // Unchanged - sample from original position
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sample_x, sample_y, ctx.input_width, ctx.input_height);
             }
             else if (dist > eff_plus_feather) {
                 // Shifted
@@ -897,17 +913,10 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
                 // Anti-aliasing zone: transition from original to gap (around dist=0)
                 // dist is in [-feather, feather]
                 Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                Pixel original_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sample_x, sample_y, ctx.input_width, ctx.input_height);
                 
-                // coverage: 0 at feather (Original), 1 at -feather (Border).
-                // Wait, logic: dist < 0 is original.
-                // t should be 0 at dist = -feather, 1 at dist = feather.
-                // Original logic in step 364: 
-                // float t = (dist - (-feather)) * feather_inv;
-                // out_row[x] = BlendPixels(in_row[x], border_pixel, t);
-                // Correct.
-
                 float t = (dist + feather) * feather_inv;
-                out_row[x] = BlendPixels(in_row[x], border_pixel, t);
+                out_row[x] = BlendPixels(original_pixel, border_pixel, t);
             }
             else if (dist > eff_minus_feather) {
                 // Anti-aliasing zone: transition from gap to shifted (around dist=eff)
@@ -966,7 +975,6 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
         const float row_max = (std::max)(dist0, distN);
 
         Pixel* out_row = reinterpret_cast<Pixel*>(ctx.output_base + static_cast<A_long>(y) * ctx.output_rowbytes);
-        const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y) * ctx.input_rowbytes);
 
         const float base_para = dy * para_y;
 
@@ -974,9 +982,26 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
         float sample_x = 0.0f - ctx.output_origin_x;
         const float sample_y = yf_input;
 
-        // Entire row is in front of the line (dist > 0) -> unchanged
+        // Entire row is in front of the line (dist > 0) -> unchanged (copy from input)
         if (row_min > 0.0f) {
-            std::memcpy(out_row, in_row, sizeof(Pixel) * ctx.width);
+            // Need to check if yf_input is within input bounds
+            const int y_input = static_cast<int>(yf_input + 0.5f);
+            if (y_input >= 0 && y_input < ctx.input_height) {
+                const Pixel* in_row = reinterpret_cast<const Pixel*>(ctx.input_base + static_cast<A_long>(y_input) * ctx.input_rowbytes);
+                // Copy only the portion that overlaps with input
+                for (int x = 0; x < ctx.width; ++x) {
+                    const float x_input = sample_x + static_cast<float>(x);
+                    const int xi = static_cast<int>(x_input + 0.5f);
+                    if (xi >= 0 && xi < ctx.input_width) {
+                        out_row[x] = in_row[xi];
+                    } else {
+                        std::memset(&out_row[x], 0, sizeof(Pixel));
+                    }
+                }
+            } else {
+                // Out of input bounds, fill with transparent
+                std::memset(out_row, 0, sizeof(Pixel) * ctx.width);
+            }
             continue;
         }
 
@@ -1022,8 +1047,8 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
             const float border_y = anchor_y_f + proj_len * para_y;
 
             if (dist > feather) {
-                // Unchanged
-                out_row[x] = in_row[x];
+                // Unchanged - sample from original position
+                out_row[x] = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sample_x, sample_y, ctx.input_width, ctx.input_height);
             }
             else if (dist < neg_eff_minus_feather) {
                 // Shifted
@@ -1035,10 +1060,11 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
                 // Anti-aliasing zone: transition from border to original (around dist=0)
                 // dist is in [-feather, feather]
                 Pixel border_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, border_x, border_y, ctx.input_width, ctx.input_height);
+                Pixel original_pixel = SampleBilinear<Pixel>(ctx.input_base, ctx.input_rowbytes, sample_x, sample_y, ctx.input_width, ctx.input_height);
                 
                 // coverage: 0 at feather (Original), 1 at -feather (Border)
                 float t = (feather - dist) * feather_inv;
-                out_row[x] = BlendPixels(in_row[x], border_pixel, t);
+                out_row[x] = BlendPixels(original_pixel, border_pixel, t);
             }
             else if (dist < neg_eff_plus_feather) {
                 // Anti-aliasing zone: transition from shifted to border (around dist=-eff)
