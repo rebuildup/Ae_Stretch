@@ -128,17 +128,23 @@ FrameSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_L
             max_y = std::max({max_y, y_pos, y_neg});
         }
         else if (direction == 2) { // Forward
-            float x_shifted = x - shift_vec_x;
-            float y_shifted = y - shift_vec_y;
+            // Forward: pixels shift in -shift_vec direction (sampling from -shift_vec)
+            // So the image appears to move in +shift_vec direction
+            // We need to expand buffer in +shift_vec direction
+            float x_shifted = x + shift_vec_x;
+            float y_shifted = y + shift_vec_y;
             
             min_x = std::min(min_x, x_shifted);
             max_x = std::max(max_x, x_shifted);
             min_y = std::min(min_y, y_shifted);
             max_y = std::max(max_y, y_shifted);
         }
-        else { // Backward
-            float x_shifted = x + shift_vec_x;
-            float y_shifted = y + shift_vec_y;
+        else { // Backward (direction == 3)
+            // Backward: pixels shift in +shift_vec direction (sampling from +shift_vec)
+            // So the image appears to move in -shift_vec direction
+            // We need to expand buffer in -shift_vec direction
+            float x_shifted = x - shift_vec_x;
+            float y_shifted = y - shift_vec_y;
             
             min_x = std::min(min_x, x_shifted);
             max_x = std::max(max_x, x_shifted);
