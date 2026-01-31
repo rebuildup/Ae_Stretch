@@ -5,7 +5,7 @@
 #define MAJOR_VERSION 1
 #define MINOR_VERSION 2
 #define BUG_VERSION 0
-#define BUILD_VERSION 1
+#define BUILD_VERSION 0
 #define NAME "Stretch"
 #define DESCRIPTION "Stretches pixels based on an anchor point and angle"
 
@@ -56,14 +56,7 @@
 #endif
 #endif
 
-// String IDs
-enum
-{
-    StrID_NONE = 0,
-    StrID_Name,
-    StrID_Description,
-    StrID_NUMTYPES
-};
+// String IDs - see Stretch_Strings.h for StrIDType definition
 
 enum
 {
@@ -108,6 +101,17 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+// Constants for anti-aliasing and sampling
+constexpr float ALPHA_THRESHOLD = 0.001f;
+constexpr float FEATHER_AMOUNT = 0.5f;
+constexpr float EPSILON = 0.001f;
+constexpr float WEIGHT_THRESHOLD = 0.999f;
+
+// Floating point comparison helper
+constexpr inline bool IsApproximatelyEqual(float a, float b, float epsilon = EPSILON) {
+    return std::abs(a - b) < epsilon;
+}
 
 #endif // AE_STRETCH_PIPL_BUILD
 

@@ -13,5 +13,11 @@ TableString g_strs[StrID_NUMTYPES] = {
 
 char *GetStringPtr(int strNum)
 {
-	return g_strs[strNum].str;
+	// Bounds checking to prevent out-of-bounds access
+	if (strNum >= 0 && strNum < StrID_NUMTYPES) {
+		return g_strs[strNum].str;
+	}
+	// Return empty string for invalid indices
+	static char empty_str[] = "";
+	return empty_str;
 }

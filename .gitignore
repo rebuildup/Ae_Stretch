@@ -3,10 +3,22 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Build outputs
+output/
+build/
+x64/
+ARM64/
+*.user
+*.vcxproj.user
+
+# macOS
+.DS_Store
+*.xcuserstate
+xcuserdata/
+
 # User-specific files
 *.rsuser
 *.suo
-*.user
 *.userosscache
 *.sln.docstates
 
@@ -361,3 +373,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Demo videos
+asset/*.mp4

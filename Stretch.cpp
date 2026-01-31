@@ -7,6 +7,7 @@
 #include <vector>
 #include <thread>
 #include <cstring>
+#include <atomic>
 
 // -----------------------------------------------------------------------------
 // UI / boilerplate
@@ -18,8 +19,18 @@ About(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerD
     (void)params;
     (void)output;
 
+    // Null pointer check before dereferencing suites
+    if (!in_data || !out_data) {
+        return PF_Err_BAD_CALLBACK_PARAM;
+    }
+
     AEGP_SuiteHandler suites(in_data->pica_basicP);
-    suites.ANSICallbacksSuite1()->sprintf(out_data->return_msg,
+    auto* ansi_suite = suites.ANSICallbacksSuite1();
+    if (!ansi_suite) {
+        return PF_Err_BAD_CALLBACK_PARAM;
+    }
+
+    ansi_suite->sprintf(out_data->return_msg,
         "%s v%d.%d\r%s",
         STR(StrID_Name),
         MAJOR_VERSION,
@@ -51,26 +62,35 @@ static PF_Err
 FrameSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_LayerDef* output)
 {
     (void)output;
-    
+
     PF_Err err = PF_Err_NONE;
-    
+
+    // Null pointer checks
+    if (!in_data || !params || !params[STRETCH_INPUT]) {
+        return PF_Err_BAD_CALLBACK_PARAM;
+    }
+
     // Get input dimensions
     PF_LayerDef* input = &params[STRETCH_INPUT]->u.ld;
     const int input_width = input->width;
     const int input_height = input->height;
-    
+
     if (input_width <= 0 || input_height <= 0) {
         return PF_Err_NONE;
     }
-    
+
     // Get parameters
     const float shift_amount = static_cast<float>(params[STRETCH_SHIFT_AMOUNT]->u.fs_d.value);
     float angle_deg = static_cast<float>(params[STRETCH_ANGLE]->u.ad.value >> 16);
     const int direction = params[STRETCH_DIRECTION]->u.pd.value;
-    
-    // Downsample adjustment
-    const float downsample_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
-    const float downsample_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
+
+    // Downsample adjustment with division by zero protection (check both num > 0 and den != 0)
+    const float downsample_x = (in_data->downsample_x.num > 0 && in_data->downsample_x.den != 0)
+        ? static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num)
+        : 1.0f;
+    const float downsample_y = (in_data->downsample_y.num > 0 && in_data->downsample_y.den != 0)
+        ? static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num)
+        : 1.0f;
     const float downsample = std::min(downsample_x, downsample_y);
     
     // Effective shift in pixels
@@ -158,17 +178,22 @@ FrameSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* params[], PF_L
     int expand_top = static_cast<int>(std::ceil(-min_y));
     int expand_right = static_cast<int>(std::ceil(max_x - input_width));
     int expand_bottom = static_cast<int>(std::ceil(max_y - input_height));
-    
+
     if (expand_left < 0) expand_left = 0;
     if (expand_top < 0) expand_top = 0;
     if (expand_right < 0) expand_right = 0;
     if (expand_bottom < 0) expand_bottom = 0;
-    
-    // Set output dimensions and origin
+
+    // Set output dimensions and origin with integer overflow protection
+    // Clamp to short range (-32768 to 32767) to prevent overflow when casting to short
+    constexpr int short_max = 32767;
+    const int clamped_expand_left = std::min(expand_left, short_max);
+    const int clamped_expand_top = std::min(expand_top, short_max);
+
     out_data->width = input_width + expand_left + expand_right;
     out_data->height = input_height + expand_top + expand_bottom;
-    out_data->origin.h = static_cast<short>(expand_left);
-    out_data->origin.v = static_cast<short>(expand_top);
+    out_data->origin.h = static_cast<short>(clamped_expand_left);
+    out_data->origin.v = static_cast<short>(clamped_expand_top);
     
     return err;
 }
@@ -223,10 +248,6 @@ static PF_Err ParamsSetup(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef*
 }
 
 
-
-#ifndef M_PI
-#define M_PI 3.14159265358979323846
-#endif
 
 template <typename T>
 static inline T ClampScalar(T value, T min_value, T max_value)
@@ -325,8 +346,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     const float fy = yf - static_cast<float>(y0);
     
     // Fast path: if coordinate is (nearly) integer, skip bilinear interpolation
-    constexpr float epsilon = 0.001f;
-    if (fx < epsilon && fy < epsilon) {
+    if (fx < EPSILON && fy < EPSILON) {
         // Check bounds
         if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) {
             const Pixel* row = reinterpret_cast<const Pixel*>(base_ptr + y0 * rowbytes);
@@ -394,13 +414,12 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     
     // Alpha-weighted interpolation
     // Pixels with zero or near-zero alpha don't contribute to color
-    constexpr float alpha_threshold = 0.001f;
     
     float total_weight = 0.0f;
     float r = 0.0f, g = 0.0f, b = 0.0f, a = 0.0f;
     
     // Process each pixel - convert RGB values only when alpha is significant
-    if (a00 > alpha_threshold) {
+    if (a00 > ALPHA_THRESHOLD) {
         const float weight = w00 * a00;
         total_weight += weight;
         r += Traits::ToFloat(p00.red) * weight;
@@ -409,7 +428,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
         a += a00 * w00;
     }
     
-    if (a10 > alpha_threshold) {
+    if (a10 > ALPHA_THRESHOLD) {
         const float weight = w10 * a10;
         total_weight += weight;
         r += Traits::ToFloat(p10.red) * weight;
@@ -418,7 +437,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
         a += a10 * w10;
     }
     
-    if (a01 > alpha_threshold) {
+    if (a01 > ALPHA_THRESHOLD) {
         const float weight = w01 * a01;
         total_weight += weight;
         r += Traits::ToFloat(p01.red) * weight;
@@ -427,7 +446,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
         a += a01 * w01;
     }
     
-    if (a11 > alpha_threshold) {
+    if (a11 > ALPHA_THRESHOLD) {
         const float weight = w11 * a11;
         total_weight += weight;
         r += Traits::ToFloat(p11.red) * weight;
@@ -438,7 +457,7 @@ static inline Pixel SampleBilinear(const A_u_char* base_ptr,
     
     Pixel result;
     
-    if (total_weight > alpha_threshold) {
+    if (total_weight > ALPHA_THRESHOLD) {
         // Normalize by total weight - use multiplication by inverse instead of division
         const float inv_weight = 1.0f / total_weight;
         result.red = Traits::FromFloat(r * inv_weight);
@@ -489,20 +508,18 @@ public:
     // Sample at X coordinate with alpha-weighted interpolation
     inline Pixel Sample(float x) const {
         using Traits = PixelTraits<Pixel>;
-        constexpr float alpha_threshold = 0.001f;
-        constexpr float epsilon = 0.001f;
-        
+
         const int x0 = static_cast<int>(floorf(x));
         const float fx = x - static_cast<float>(x0);
-        
+
         // Fast path: if X is (nearly) integer and Y weight is heavily on one row
-        if (fx < epsilon) {
+        if (fx < EPSILON) {
             if (x0 >= 0 && x0 < width) {
                 // Check if we can use single row (when fy was near 0 or 1)
-                if (row0 && w0_y > 0.999f) {
+                if (row0 && w0_y > WEIGHT_THRESHOLD) {
                     return row0[x0];
                 }
-                if (row1 && w1_y > 0.999f) {
+                if (row1 && w1_y > WEIGHT_THRESHOLD) {
                     return row1[x0];
                 }
             }
@@ -530,7 +547,7 @@ public:
             if (x0_in) {
                 const Pixel& p = row0[x0];
                 const float pa = Traits::ToFloat(p.alpha);
-                if (pa > alpha_threshold) {
+                if (pa > ALPHA_THRESHOLD) {
                     const float w = w0_y * inv_fx;
                     const float weight = w * pa;
                     total_weight += weight;
@@ -543,7 +560,7 @@ public:
             if (x1_in) {
                 const Pixel& p = row0[x1];
                 const float pa = Traits::ToFloat(p.alpha);
-                if (pa > alpha_threshold) {
+                if (pa > ALPHA_THRESHOLD) {
                     const float w = w0_y * fx;
                     const float weight = w * pa;
                     total_weight += weight;
@@ -560,7 +577,7 @@ public:
             if (x0_in) {
                 const Pixel& p = row1[x0];
                 const float pa = Traits::ToFloat(p.alpha);
-                if (pa > alpha_threshold) {
+                if (pa > ALPHA_THRESHOLD) {
                     const float w = w1_y * inv_fx;
                     const float weight = w * pa;
                     total_weight += weight;
@@ -573,7 +590,7 @@ public:
             if (x1_in) {
                 const Pixel& p = row1[x1];
                 const float pa = Traits::ToFloat(p.alpha);
-                if (pa > alpha_threshold) {
+                if (pa > ALPHA_THRESHOLD) {
                     const float w = w1_y * fx;
                     const float weight = w * pa;
                     total_weight += weight;
@@ -586,7 +603,7 @@ public:
         }
 
         Pixel result;
-        if (total_weight > alpha_threshold) {
+        if (total_weight > ALPHA_THRESHOLD) {
             const float inv_weight = 1.0f / total_weight;
             result.red = Traits::FromFloat(r * inv_weight);
             result.green = Traits::FromFloat(g * inv_weight);
@@ -737,7 +754,7 @@ static inline void ProcessRowsBoth(const StretchRenderContext<Pixel>& ctx, int s
         float proj_len = dx0 * para_x + base_para;
         
         // Anti-aliasing feather width (in pixels)
-        const float feather = 0.5f;
+        const float feather = FEATHER_AMOUNT;
         
         // Pre-calculate constants to avoid repeated computation
         const float eff_plus_feather = eff + feather;
@@ -871,7 +888,7 @@ static inline void ProcessRowsForward(const StretchRenderContext<Pixel>& ctx, in
         float proj_len = dx0 * para_x + base_para;
 
         // Anti-aliasing constants
-        const float feather = 0.5f;
+        const float feather = FEATHER_AMOUNT;
         const float eff_plus_feather = eff + feather;
         const float eff_minus_feather = eff - feather;
         const float feather_inv = 1.0f / (2.0f * feather);
@@ -994,7 +1011,7 @@ static inline void ProcessRowsBackward(const StretchRenderContext<Pixel>& ctx, i
         float proj_len = dx0 * para_x + base_para;
 
         // Anti-aliasing constants
-        const float feather = 0.5f;
+        const float feather = FEATHER_AMOUNT;
         const float neg_eff_plus_feather = -eff + feather;
         const float neg_eff_minus_feather = -eff - feather;
         const float feather_inv = 1.0f / (2.0f * feather);
@@ -1058,7 +1075,43 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
 {
     (void)out_data;
 
+    // Null pointer checks
+    if (!in_data || !params || !params[STRETCH_INPUT] || !output) {
+        return PF_Err_BAD_CALLBACK_PARAM;
+    }
+
+    // Checkout parameters for complex parameter access (especially ANCHOR_POINT)
+    // This is required per Adobe SDK guidelines for accessing nested parameter data
+    PF_ParamDef param;
+    AEFX_CLR_STRUCT(param);
+
+    // Checkout anchor point parameter to safely access its nested data
+    PF_Err err = PF_CHECKOUT_PARAM(in_data,
+                                   STRETCH_ANCHOR_POINT,
+                                   in_data->current_time,
+                                   in_data->time_step,
+                                   in_data->time_scale,
+                                   &param);
+    if (err != PF_Err_NONE) {
+        return err;
+    }
+
+    // Get anchor point values before checkin
+    const int anchor_x = (param.u.td.x_value >> 16);
+    const int anchor_y = (param.u.td.y_value >> 16);
+
+    // Checkin the parameter immediately after extracting needed values
+    err = PF_CHECKIN_PARAM(in_data, &param, true);
+    if (err != PF_Err_NONE) {
+        return err;
+    }
+
     PF_EffectWorld* input = &params[STRETCH_INPUT]->u.ld;
+
+    // Check data pointers
+    if (!input->data || !output->data) {
+        return PF_Err_BAD_CALLBACK_PARAM;
+    }
 
     const int width = output->width;
     const int height = output->height;
@@ -1069,29 +1122,49 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
         return PF_Err_NONE;
     }
 
+    // Maximum size validation to prevent memory issues
+    constexpr int MAX_WIDTH = 16384;
+    constexpr int MAX_HEIGHT = 16384;
+    if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+        return PF_Err_BAD_CALLBACK_PARAM;
+    }
+
     const A_u_char* input_base = reinterpret_cast<const A_u_char*>(input->data);
     A_u_char* output_base = reinterpret_cast<A_u_char*>(output->data);
     const A_long input_rowbytes = input->rowbytes;
     const A_long output_rowbytes = output->rowbytes;
 
-    // Parameters
-    const int anchor_x = (params[STRETCH_ANCHOR_POINT]->u.td.x_value >> 16);
-    const int anchor_y = (params[STRETCH_ANCHOR_POINT]->u.td.y_value >> 16);
+    // Parameters (anchor_x and anchor_y already extracted via PF_CHECKOUT_PARAM above)
     float angle_deg = static_cast<float>(params[STRETCH_ANGLE]->u.ad.value >> 16);
     const float angle_rad = angle_deg * (static_cast<float>(M_PI) / 180.0f);
     const float shift_amount = static_cast<float>(params[STRETCH_SHIFT_AMOUNT]->u.fs_d.value);
     const int direction = params[STRETCH_DIRECTION]->u.pd.value;
 
-    // Downsample adjustment
-    const float downsample_x = static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num);
-    const float downsample_y = static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num);
+    // Downsample adjustment with division by zero protection (check both num > 0 and den != 0)
+    const float downsample_x = (in_data->downsample_x.num > 0 && in_data->downsample_x.den != 0)
+        ? static_cast<float>(in_data->downsample_x.den) / static_cast<float>(in_data->downsample_x.num)
+        : 1.0f;
+    const float downsample_y = (in_data->downsample_y.num > 0 && in_data->downsample_y.den != 0)
+        ? static_cast<float>(in_data->downsample_y.den) / static_cast<float>(in_data->downsample_y.num)
+        : 1.0f;
     const float downsample = std::min(downsample_x, downsample_y);
 
-    // Effective shift in pixels
-    float effective_shift = (downsample > 0.0f) ? (shift_amount / downsample) : shift_amount;
+    // Effective shift in pixels with NaN/infinity validation
+    float effective_shift = (downsample > 0.0f && std::isfinite(downsample))
+        ? (shift_amount / downsample)
+        : shift_amount;
+
+    // Validate effective_shift is finite
+    if (!std::isfinite(effective_shift)) {
+        effective_shift = 0.0f;
+    }
 
     if (std::abs(effective_shift) < 0.01f) {
-        return PF_COPY(input, output, nullptr, nullptr);
+        PF_Err copy_err = PF_COPY(input, output, nullptr, nullptr);
+        if (copy_err != PF_Err_NONE) {
+            return copy_err;
+        }
+        return PF_Err_NONE;
     }
 
     // Direction adjustment
@@ -1140,34 +1213,58 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
 
     // Parallel processing using std::thread
     // Safe because we only use our own SampleBilinear (no AE API calls)
-    const int num_threads = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+    // Thread count limit to prevent excessive resource consumption
+    constexpr int max_threads = 16;
+    const int num_threads = std::min(max_threads, std::max(1, static_cast<int>(std::thread::hardware_concurrency())));
     const int rows_per_thread = (height + num_threads - 1) / num_threads;
-    
+
+    // Atomic error flag for proper error propagation from worker threads
+    std::atomic<bool> has_error{false};
+
     std::vector<std::thread> threads;
     threads.reserve(num_threads);
-    
+
+    // Capture ctx by value to avoid dangling reference
     for (int t = 0; t < num_threads; ++t) {
         const int start_y = t * rows_per_thread;
         const int end_y = std::min(start_y + rows_per_thread, height);
-        
+
         if (start_y >= height) break;
-        
-        threads.emplace_back([&ctx, direction, start_y, end_y]() {
-            if (direction == 1) {
-                ProcessRowsBoth(ctx, start_y, end_y);
+
+        threads.emplace_back([ctx, direction, start_y, end_y, &has_error]() {
+            try {
+                if (direction == 1) {
+                    ProcessRowsBoth(ctx, start_y, end_y);
+                }
+                else if (direction == 2) {
+                    ProcessRowsForward(ctx, start_y, end_y);
+                }
+                else {
+                    ProcessRowsBackward(ctx, start_y, end_y);
+                }
             }
-            else if (direction == 2) {
-                ProcessRowsForward(ctx, start_y, end_y);
+            catch (const std::exception& e) {
+                // Log error and set atomic flag
+                (void)e; // Suppress unused warning in release builds
+                has_error.store(true, std::memory_order_release);
             }
-            else {
-                ProcessRowsBackward(ctx, start_y, end_y);
+            catch (...) {
+                // Catch any other exceptions and set error flag
+                has_error.store(true, std::memory_order_release);
             }
         });
     }
-    
+
     // Wait for all threads to complete
     for (auto& t : threads) {
-        t.join();
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    // Check if any worker thread encountered an error
+    if (has_error.load(std::memory_order_acquire)) {
+        return PF_Err_INTERNAL_STRUCT_DAMAGED;
     }
 
     return PF_Err_NONE;
@@ -1177,21 +1274,33 @@ static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* para
 {
     (void)out_data;
 
-    if (output->world_flags & PF_WorldFlag_DEEP) {
-        if (PF_WORLD_IS_DEEP(output)) {
-            // 16-bit
-            return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
-        }
+    // Null pointer checks
+    if (!in_data || !output) {
+        return PF_Err_BAD_CALLBACK_PARAM;
     }
 
-    int bpp = (output->width > 0) ? (output->rowbytes / output->width) : 0;
-    if (bpp == static_cast<int>(sizeof(PF_PixelFloat))) {
+    // Use proper PF_PixelFormat query for bit depth detection
+    PF_PixelFormat pixel_format = PF_PixelFormat_INVALID;
+    AEFX_SuiteScoper suites(in_data->pica_basicP);
+
+    if (suites.PFWorldPixelFormatSuite()) {
+        suites.PFWorldPixelFormatSuite()->GetPixelFormat(output, &pixel_format);
+    }
+
+    // Check pixel format to determine bit depth
+    if (pixel_format == PF_PixelFormat_ARGB128) {
+        // 32-bit float
         return RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
     }
-    else if (bpp == static_cast<int>(sizeof(PF_Pixel16))) {
+    else if (pixel_format == PF_PixelFormat_ARGB64 ||
+             pixel_format == PF_PixelFormat_ARGB1555 ||
+             pixel_format == PF_PixelFormat_ARGB2101010 ||
+             (output->world_flags & PF_WorldFlag_DEEP)) {
+        // 16-bit
         return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
     }
     else {
+        // Default to 8-bit
         return RenderGeneric<PF_Pixel>(in_data, out_data, params, output);
     }
 }
