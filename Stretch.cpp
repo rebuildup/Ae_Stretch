@@ -1281,10 +1281,15 @@ static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* para
 
     // Use proper PF_PixelFormat query for bit depth detection
     PF_PixelFormat pixel_format = PF_PixelFormat_INVALID;
-    AEGP_SuiteHandler suites(in_data->pica_basicP);
 
-    if (suites.PFWorldPixelFormatSuite()) {
-        suites.PFWorldPixelFormatSuite()->GetPixelFormat(output, &pixel_format);
+    // Acquire PF World Pixel Format Suite
+    PF_PixelFormatSuite1 *pixel_format_suite = nullptr;
+    in_data->pica_basicP->AcquireSuite(kPFWorldPixelFormatSuite,
+                                        kPFWorldPixelFormatSuiteVersion1,
+                                        (const void **)&pixel_format_suite);
+
+    if (pixel_format_suite) {
+        pixel_format_suite->GetPixelFormat(output, &pixel_format);
     }
 
     // Check pixel format to determine bit depth
