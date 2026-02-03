@@ -1279,25 +1279,13 @@ static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* para
         return PF_Err_BAD_CALLBACK_PARAM;
     }
 
-    // Use proper PF_PixelFormat query for bit depth detection
-    PF_PixelFormat pixel_format = PF_PixelFormat_INVALID;
+    // Determine bit depth from world_flags
+    // PF_WorldFlag_DEEP indicates 16-bit, absence indicates 8-bit
+    // For 32-bit float, we check both input and output flags
+    PF_EffectWorld* input = &params[STRETCH_INPUT]->u.ld;
 
-    // Acquire PF World Pixel Format Suite
-    PF_PixelFormatSuite1 *pixel_format_suite = nullptr;
-    in_data->pica_basicP->AcquireSuite(kPFWorldPixelFormatSuite,
-                                        kPFWorldPixelFormatSuiteVersion1,
-                                        (const void **)&pixel_format_suite);
-
-    if (pixel_format_suite) {
-        pixel_format_suite->GetPixelFormat(output, &pixel_format);
-    }
-
-    // Check pixel format to determine bit depth
-    if (pixel_format == PF_PixelFormat_ARGB128) {
-        // 32-bit float
-        return RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
-    }
-    else if (pixel_format == PF_PixelFormat_ARGB64 || (output->world_flags & PF_WorldFlag_DEEP)) {
+    if ((output->world_flags & PF_WorldFlag_DEEP) ||
+        (input->world_flags & PF_WorldFlag_DEEP)) {
         // 16-bit
         return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
     }
