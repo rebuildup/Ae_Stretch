@@ -1101,7 +1101,7 @@ static PF_Err RenderGeneric(PF_InData* in_data, PF_OutData* out_data, PF_ParamDe
     const int anchor_y = (param.u.td.y_value >> 16);
 
     // Checkin the parameter immediately after extracting needed values
-    err = PF_CHECKIN_PARAM(in_data, &param, true);
+    err = PF_CHECKIN_PARAM(in_data, &param);
     if (err != PF_Err_NONE) {
         return err;
     }
@@ -1281,7 +1281,7 @@ static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* para
 
     // Use proper PF_PixelFormat query for bit depth detection
     PF_PixelFormat pixel_format = PF_PixelFormat_INVALID;
-    AEFX_SuiteScoper suites(in_data->pica_basicP);
+    AEGP_SuiteHandler suites(in_data->pica_basicP);
 
     if (suites.PFWorldPixelFormatSuite()) {
         suites.PFWorldPixelFormatSuite()->GetPixelFormat(output, &pixel_format);
@@ -1292,10 +1292,7 @@ static PF_Err Render(PF_InData* in_data, PF_OutData* out_data, PF_ParamDef* para
         // 32-bit float
         return RenderGeneric<PF_PixelFloat>(in_data, out_data, params, output);
     }
-    else if (pixel_format == PF_PixelFormat_ARGB64 ||
-             pixel_format == PF_PixelFormat_ARGB1555 ||
-             pixel_format == PF_PixelFormat_ARGB2101010 ||
-             (output->world_flags & PF_WorldFlag_DEEP)) {
+    else if (pixel_format == PF_PixelFormat_ARGB64 || (output->world_flags & PF_WorldFlag_DEEP)) {
         // 16-bit
         return RenderGeneric<PF_Pixel16>(in_data, out_data, params, output);
     }

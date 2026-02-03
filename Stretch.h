@@ -56,7 +56,13 @@
 #endif
 #endif
 
-// String IDs - see Stretch_Strings.h for StrIDType definition
+// String IDs
+typedef enum {
+    StrID_NONE = 0,
+    StrID_Name,
+    StrID_Description,
+    StrID_NUMTYPES
+} StrIDType;
 
 enum
 {
@@ -110,7 +116,7 @@ constexpr float WEIGHT_THRESHOLD = 0.999f;
 
 // Floating point comparison helper
 constexpr inline bool IsApproximatelyEqual(float a, float b, float epsilon = EPSILON) {
-    return std::abs(a - b) < epsilon;
+    return (a > b ? a - b : b - a) < epsilon;
 }
 
 #endif // AE_STRETCH_PIPL_BUILD
