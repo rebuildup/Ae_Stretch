@@ -1302,6 +1302,7 @@ PF_Err PluginDataEntryFunction2(PF_PluginDataPtr inPtr,
     const char* inHostName,
     const char* inHostVersion)
 {
+    (void)inSPBasicSuitePtr;
     (void)inHostName;
     (void)inHostVersion;
 
