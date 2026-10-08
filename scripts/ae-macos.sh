@@ -103,7 +103,7 @@ verify() {
     die "Expected exported symbol $entry not found"
   grep -aq 'ma64' "$rsrc" || die "PiPL is missing CodeMacARM64"
   codesign --verify --strict "$bundle" || die "Bundle signature invalid"
-  if otool -L "$binary" | grep -q '/Users/'; then
+  if otool -L "$binary" | sed '1d' | grep -q '^[[:space:]]*/Users/'; then
     die "Absolute /Users link dependency in bundle"
   fi
   echo "Verified bundle (not AE-host-tested): $bundle"
