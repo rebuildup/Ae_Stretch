@@ -376,3 +376,7 @@ FodyWeavers.xsd
 
 # Demo videos
 asset/*.mp4
+# XcodeGen macOS migration (project.yml is source of truth)
+/Stretch.xcodeproj/
+/build/
+/.env.local

@@ -46,7 +46,10 @@ resource 'PiPL' (16000) {
 	},
 	
 	AE_Effect_Version {
-		66048    /* 1.2.0 = (1 << 16) | (2 << 8) | 0 */
+		/* PF_VERSION(1, 2, 0, PF_Stage_DEVELOP, 0).
+		   The previous literal 66048 encoded 0.2.0.1, so After Effects
+		   reported "code version 1.2, PiPL version 0.2" (error 90000). */
+		589824
 	},
 	
 	AE_Effect_Info_Flags {
